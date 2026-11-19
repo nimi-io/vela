@@ -33,7 +33,7 @@ export function LiveListPage() {
             Each live stream has a permanent stream key, so you can reuse it for every broadcast.
           </Empty>
         ) : (
-          <table className="table">
+          <div className="table-wrap"><table className="table">
             <thead>
               <tr>
                 <th>Stream</th>
@@ -61,7 +61,7 @@ export function LiveListPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Panel>
       {creating && <CreateLive onClose={() => setCreating(false)} />}
@@ -208,22 +208,22 @@ export function LivePage() {
             <div className="player-frame center" style={{ color: "#d6dde6", textAlign: "center", padding: 24 }}>
               <div className="stack-sm" style={{ alignItems: "center" }}>
                 <strong style={{ color: "#fff" }}>Waiting for your encoder</strong>
-                <span className="small">Start streaming to the URL and key on the right. The preview appears here within a few seconds.</span>
+                <span className="small">Start streaming with the server and stream key under Connect your encoder. The preview appears here within a few seconds.</span>
               </div>
             </div>
           )}
 
           <Panel title="Connect your encoder" description="In OBS: Settings, Stream, Service: Custom.">
             <div className="stack">
-              <Field label="RTMP server">
+              <Field group label="RTMP server">
                 <CopyField value={l.ingest.rtmp.url} label="Server URL" />
               </Field>
               {l.ingest.rtmps && (
-                <Field label="RTMPS server">
+                <Field group label="RTMPS server">
                   <CopyField value={l.ingest.rtmps.url} label="Server URL" />
                 </Field>
               )}
-              <Field label="Stream key" hint="Anyone with this key can broadcast to your stream.">
+              <Field group label="Stream key" hint="Anyone with this key can broadcast to your stream.">
                 <div className="row">
                   <div className="grow">
                     <CopyField value={l.stream_key} display={reveal ? undefined : "•".repeat(24)} label="Stream key" />
@@ -236,7 +236,7 @@ export function LivePage() {
                   </button>
                 </div>
               </Field>
-              <Field label="SRT URL" hint="For encoders that support SRT (lower latency, better on lossy networks).">
+              <Field group label="SRT URL" hint="For encoders that support SRT (lower latency, better on lossy networks).">
                 <CopyField value={l.ingest.srt.url} display={reveal ? undefined : l.ingest.srt.url.replace(l.stream_key, "•".repeat(12))} label="SRT URL" />
               </Field>
             </div>

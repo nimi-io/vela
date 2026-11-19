@@ -132,7 +132,7 @@ export function DrmPage() {
         <Panel title="Player endpoints" description="The Vela player uses these automatically. Use them directly if you bring your own player.">
           <div className="stack-sm">
             {Object.entries(d.player_endpoints).map(([k, v]) => (
-              <Field key={k} label={k.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}>
+              <Field group key={k} label={DRM_LABELS[k] ?? k.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}>
                 <CopyField value={v} />
               </Field>
             ))}
@@ -147,3 +147,12 @@ export function DrmPage() {
     </div>
   );
 }
+
+/** Product names as their vendors write them (not "Playready", "Fairplay", "Clearkey"). */
+const DRM_LABELS: Record<string, string> = {
+  widevine: "Widevine",
+  playready: "PlayReady",
+  fairplay: "FairPlay",
+  fairplay_certificate: "FairPlay certificate",
+  clearkey: "ClearKey",
+};

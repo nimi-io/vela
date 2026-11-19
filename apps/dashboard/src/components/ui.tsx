@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useState, type ReactNode } from "react";
 
 /* ------------------------------ Toasts ------------------------------ */
 type Toast = { id: number; text: string; error?: boolean };
@@ -62,7 +62,22 @@ export function Modal({
 }
 
 /* ------------------------------ Bits ------------------------------ */
-export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+/**
+ * A labelled form row. Wraps a single input/select in a <label>. Pass `group` when the
+ * children are not one form control (copy fields, button rows): a <label> would hand its
+ * whole text to the first button inside as that button's name, and clicking the label
+ * text would press it (e.g. clicking "Stream key" copied the key).
+ */
+export function Field({ label, hint, children, group }: { label: string; hint?: ReactNode; children: ReactNode; group?: boolean }) {
+  const id = useId();
+  if (group)
+    return (
+      <div className="field" role="group" aria-labelledby={id}>
+        <span id={id}>{label}</span>
+        {children}
+        {hint && <small>{hint}</small>}
+      </div>
+    );
   return (
     <label className="field">
       <span>{label}</span>

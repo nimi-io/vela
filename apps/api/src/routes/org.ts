@@ -118,7 +118,22 @@ export const orgRoutes = new Hono<AppEnv>()
   .patch("/members/:id", async (c) => {
     const auth = requireAdmin(c);
     const input = await body(c, z.object({ role: z.enum(["owner", "admin", "member"]) }));
-    const res = await getDb()
+    const db = getDb();
+    const [m] = await db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.id, c.req.param("id")), eq(memberships.orgId, auth.orgId)));
+    if (!m) notFound("Member");
+    // Same rule as removing a member: demoting the last owner would leave nobody able to
+    // manage the team (a sole owner could lock themselves out with one dropdown change).
+    if (m.role === "owner" && input.role !== "owner") {
+      const owners = await db
+        .select()
+        .from(memberships)
+        .where(and(eq(memberships.orgId, auth.orgId), eq(memberships.role, "owner")));
+      if (owners.length <= 1) throw new ApiError(400, "invalid_request", "Can't change the role of the last owner. Make someone else an owner first.");
+    }
+    const res = await db
       .update(memberships)
       .set({ role: input.role })
       .where(and(eq(memberships.id, c.req.param("id")), eq(memberships.orgId, auth.orgId)))

@@ -28,6 +28,8 @@ export function SettingsPage() {
   const [pw, setPw] = useState({ current: "", next: "" });
   const isAdmin = sessOrg?.role !== "member";
   const org = q.data;
+  // orgName is null until the field is edited; never send that null to the API.
+  const teamName = (orgName ?? org?.name ?? "").trim();
   const reload = async () => {
     await qc.invalidateQueries({ queryKey: ["org"] });
     await refresh();
@@ -47,14 +49,18 @@ export function SettingsPage() {
       <PageHead title="Settings" />
       <div className="stack">
         <Panel title="Team">
-          <form className="row" onSubmit={(e) => (e.preventDefault(), run(() => patch("/v1/org", { name: orgName }), "Team name saved"))}>
+          <form className="row" onSubmit={(e) => (e.preventDefault(), run(() => patch("/v1/org", { name: teamName }), "Team name saved"))}>
             <input className="input" style={{ maxWidth: 360 }} value={orgName ?? org?.name ?? ""} onChange={(e) => setOrgName(e.target.value)} disabled={!isAdmin} aria-label="Team name" />
-            {isAdmin && <button className="btn">Save name</button>}
+            {isAdmin && (
+              <button className="btn" disabled={!teamName || teamName === org?.name}>
+                Save name
+              </button>
+            )}
           </form>
         </Panel>
 
         <Panel flush title="Environments" description="Each environment has its own videos, keys, webhooks and settings. Keep tests out of production.">
-          <table className="table">
+          <div className="table-wrap"><table className="table">
             <tbody>
               {org?.environments.map((e) => (
                 <tr key={e.id}>
@@ -73,7 +79,7 @@ export function SettingsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           {isAdmin && (
             <form
               className="row panel-body"
@@ -94,7 +100,7 @@ export function SettingsPage() {
         </Panel>
 
         <Panel flush title="Members">
-          <table className="table">
+          <div className="table-wrap"><table className="table">
             <tbody>
               {org?.members.map((m) => (
                 <tr key={m.id}>
@@ -124,7 +130,7 @@ export function SettingsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           {isAdmin && (
             <form
               className="row panel-body"

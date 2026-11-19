@@ -20,6 +20,14 @@ function usePreviewToken(pid?: { id: string; policy: string }) {
 
 export function VideoPage() {
   const { id } = useParams();
+  // Remount per asset: React Router keeps this element mounted when only :id changes
+  // and the child panels seed local state from the asset (rename box, clip range, filmstrip,
+  // playback policy). With the next asset already cached there is no loading state to unmount
+  // them, e.g. source -> Create clip -> browser Back showed the clip's title in Rename.
+  return <VideoView key={id} id={id!} />;
+}
+
+function VideoView({ id }: { id: string }) {
   const asset = useOne<Asset>("asset", `/v1/assets/${id}`, (a) => (a?.status === "preparing" || a?.tracks.some((t) => t.status === "preparing") || a?.static_renditions?.status === "preparing" ? 3000 : false));
   const a = asset.data;
   const pid = a?.playback_ids[0];

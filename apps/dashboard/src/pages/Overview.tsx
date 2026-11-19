@@ -64,7 +64,7 @@ export function OverviewPage() {
               Your first upload will show up here with its status and stats.
             </Empty>
           ) : (
-            <table className="table">
+            <div className="table-wrap"><table className="table">
               <tbody>
                 {assets.data!.data.map((a) => {
                   const t = thumbUrl(config?.stream_url, a);
@@ -86,7 +86,7 @@ export function OverviewPage() {
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
           )}
         </Panel>
 
