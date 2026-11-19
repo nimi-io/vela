@@ -1,0 +1,13 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+.DS_Store
+/data
+/tmp
+coverage
+dump.rdb
+test-media/
+test-results/
+.env.r2

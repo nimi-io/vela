@@ -1,0 +1,20 @@
+{
+  "name": "@vela/player",
+  "version": "1.0.0",
+  "description": "<vela-player> web component: HLS/DASH, DRM, captions, storyboards, chapters and built-in analytics.",
+  "type": "module",
+  "main": "dist/vela-player.mjs",
+  "module": "dist/vela-player.mjs",
+  "types": "src/index.ts",
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "vite build && vite build --mode iife",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "shaka-player": "^4.12.6"
+  },
+  "devDependencies": {
+    "vite": "^6.0.5"
+  }
+}

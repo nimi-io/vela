@@ -1,0 +1,44 @@
+# MediaMTX: RTMP/SRT ingest → low-latency HLS + fMP4 recording.
+# Vela decides who may publish (authHTTPAddress → API) and reacts to lifecycle hooks.
+logLevel: info
+
+api: yes
+apiAddress: :9997
+metrics: no
+
+rtsp: no
+webrtc: no
+
+rtmp: yes
+rtmpAddress: :1935
+
+srt: yes
+srtAddress: :8890
+
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsAlwaysRemux: yes
+hlsAllowOrigin: "*"
+
+# Auth is delegated to the Vela API. The address (with its secret) is set via the
+# MTX_AUTHHTTPADDRESS environment variable in docker-compose.
+authMethod: http
+authHTTPExclude: []
+
+pathDefaults:
+  record: yes
+  recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordSegmentDuration: 30s
+  recordDeleteAfter: 6h
+
+paths:
+  "~^live/.+$":
+    runOnReady: /hooks/hook.sh ready
+    runOnReadyRestart: no
+    runOnNotReady: /hooks/hook.sh not_ready
+    runOnRecordSegmentComplete: /hooks/hook.sh segment

@@ -1,0 +1,112 @@
+# Full Vela stack on one machine.
+#
+#   cp .env.example .env      # fill in secrets (and R2 credentials for production)
+#   docker compose up -d --build
+#
+# Dashboard + API: http://localhost:4000   Playback: http://localhost:4100
+# RTMP ingest: rtmp://localhost:1935/live   SRT: srt://localhost:8890
+#
+# Local storage uses MinIO. To use Cloudflare R2 (or any S3), set the S3_* values in .env
+# and start without MinIO:  docker compose up -d --build --scale minio=0 --scale minio-init=0
+
+x-vela: &vela
+  env_file: .env
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  environment: &vela-env
+    DATABASE_URL: postgres://vela:${POSTGRES_PASSWORD:-vela}@postgres:5432/vela
+    REDIS_URL: redis://redis:6379
+    MEDIAMTX_HLS_URL: http://mediamtx:8888
+    MEDIAMTX_RTMP_URL: rtmp://mediamtx:1935
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vela
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vela}
+      POSTGRES_DB: vela
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vela"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  # Local S3-compatible storage. Not needed when using Cloudflare R2 / AWS S3.
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-vela}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-vela-secret-key}
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on: [minio]
+    restart: "no"
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 $${MINIO_USER} $${MINIO_PASS}; do sleep 1; done;
+      mc mb -p local/$${BUCKET};
+      exit 0"
+    environment:
+      MINIO_USER: ${S3_ACCESS_KEY_ID:-vela}
+      MINIO_PASS: ${S3_SECRET_ACCESS_KEY:-vela-secret-key}
+      BUCKET: ${S3_BUCKET:-vela}
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest-ffmpeg
+    restart: unless-stopped
+    environment:
+      MTX_AUTHHTTPADDRESS: http://api:4000/internal/mediamtx/auth?secret=${INTERNAL_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      VELA_API_URL: http://api:4000
+    volumes:
+      - ./infra/mediamtx.yml:/mediamtx.yml:ro
+      - ./infra/mediamtx-hook.sh:/hooks/hook.sh:ro
+      - recordings:/recordings
+    ports:
+      - "1935:1935" # RTMP
+      - "8890:8890/udp" # SRT
+
+  api:
+    <<: *vela
+    build: { context: ., target: api }
+    ports: ["4000:4000"]
+
+  worker:
+    <<: *vela
+    build: { context: ., target: worker }
+    volumes:
+      - recordings:/recordings
+      - work:/work
+    # Run several workers (or put them on separate GPU/CPU boxes) to encode in parallel:
+    # docker compose up -d --scale worker=3
+
+  stream:
+    <<: *vela
+    build: { context: ., target: stream }
+    ports: ["4100:4100"]
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  recordings:
+  work:
