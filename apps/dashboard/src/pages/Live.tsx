@@ -208,7 +208,7 @@ export function LivePage() {
             <div className="player-frame center" style={{ color: "#d6dde6", textAlign: "center", padding: 24 }}>
               <div className="stack-sm" style={{ alignItems: "center" }}>
                 <strong style={{ color: "#fff" }}>Waiting for your encoder</strong>
-                <span className="small">Start streaming to the URL and key on the right. The preview appears here within a few seconds.</span>
+                <span className="small">Start streaming with the server and stream key under Connect your encoder. The preview appears here within a few seconds.</span>
               </div>
             </div>
           )}
