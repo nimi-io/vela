@@ -57,7 +57,8 @@ cp .env.example .env
 #   GARAGE_ADMIN_TOKEN:                              openssl rand -base64 32
 #   S3_ACCESS_KEY_ID:  echo GK$(openssl rand -hex 12)     S3_SECRET_ACCESS_KEY:  openssl rand -hex 32
 docker compose up -d --build
-# Allow browser uploads to Garage (one time; sets CORS on the bucket):
+# Allow browser uploads to Garage, and players reading from it in STREAM_SEGMENT_MODE=redirect
+# (one time; sets CORS on the bucket):
 node --env-file=.env scripts/setup-bucket.mjs --origins http://localhost:4000
 ```
 
@@ -94,10 +95,10 @@ Or use the web component:
 Garage is the local default; for production use R2 (or AWS S3) instead.
 
 1. Create an R2 bucket and an R2 API token with Object Read & Write. Put the values in `.env` (see the R2 block in `.env.example`) and clear `S3_PUBLIC_ENDPOINT`.
-2. Allow browser uploads: `pnpm setup:bucket -- --origins https://app.example.com` (or run `node --env-file=.env scripts/setup-bucket.mjs`).
+2. Allow browser uploads: `pnpm setup:bucket -- --origins https://app.example.com` (or run `node --env-file=.env scripts/setup-bucket.mjs`). This also lets players on any site read media from the bucket (GET/HEAD only, objects still need presigned URLs), which `STREAM_SEGMENT_MODE=redirect` requires. Use `--playback-origins` to restrict it, but then the player only works on those sites in redirect mode.
 3. Start without Garage: `docker compose up -d --build --scale garage=0 --scale garage-init=0`.
 4. Put the services behind HTTPS (Caddy, nginx, Cloudflare Tunnel…). Set `API_PUBLIC_URL`, `STREAM_PUBLIC_URL`, `DASHBOARD_URL` to the public URLs and `SESSION_COOKIE_SECURE=true`.
-5. Put a CDN in front of the stream service (for example a Cloudflare-proxied `stream.example.com`). Segment responses are `immutable` and cache well. Manifests are short-lived. Alternatively set `STREAM_SEGMENT_MODE=redirect` to send segment traffic straight to R2 with presigned URLs.
+5. Put a CDN in front of the stream service (for example a Cloudflare-proxied `stream.example.com`). Segment responses are `immutable` and cache well. Manifests are short-lived. Alternatively set `STREAM_SEGMENT_MODE=redirect` to send segment traffic straight to R2 with presigned URLs. Browsers then fetch segments from the bucket cross-origin, so its CORS must allow GET from the player's pages (step 2 sets this up). Otherwise the 302s work in curl but the player stalls with CORS errors.
 6. Expose MediaMTX ports 1935/tcp (RTMP) and 8890/udp (SRT) and set `LIVE_RTMP_PUBLIC_URL` / `LIVE_SRT_PUBLIC_URL`. For RTMPS, terminate TLS in front of 1935 and set `LIVE_RTMPS_PUBLIC_URL`.
 7. Do not expose `/internal/*` on the API publicly (block it at your proxy). MediaMTX reaches the API over the private network.
 
