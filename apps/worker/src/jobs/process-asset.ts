@@ -40,7 +40,12 @@ export async function processAsset(job: Job<{ assetId: string }>) {
     const now = Date.now();
     if (!force && now - lastWrite < 3000) return;
     lastWrite = now;
-    await db.update(assets).set({ progress: { state, progress: Math.round(progress * 1000) / 10 } }).where(eq(assets.id, assetId));
+    // Only while preparing: an attempt that lost its lock keeps running after the attempt that now
+    // owns the job has marked the asset ready (and cleared progress), and must not write it back.
+    await db
+      .update(assets)
+      .set({ progress: { state, progress: Math.round(progress * 1000) / 10 } })
+      .where(and(eq(assets.id, assetId), eq(assets.status, "preparing")));
     await job.updateProgress(Math.round(progress * 100));
   };
 
