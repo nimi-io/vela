@@ -8,6 +8,7 @@ metrics: no
 
 rtsp: no
 webrtc: no
+moq: no
 
 rtmp: yes
 rtmpAddress: :1935
@@ -22,7 +23,7 @@ hlsSegmentCount: 7
 hlsSegmentDuration: 1s
 hlsPartDuration: 200ms
 hlsAlwaysRemux: yes
-hlsAllowOrigin: "*"
+hlsAllowOrigins: ["*"]
 
 # Auth is delegated to the Vela API. The address (with its secret) is set via the
 # MTX_AUTHHTTPADDRESS environment variable in docker-compose.
@@ -31,14 +32,17 @@ authHTTPExclude: []
 
 pathDefaults:
   record: yes
-  recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  # %z (UTC offset) keeps segment names unique across DST switches. The hook URL-encodes the
+  # path because the offset contains "+".
+  recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f_%z
   recordFormat: fmp4
   recordSegmentDuration: 30s
   recordDeleteAfter: 6h
 
 paths:
   "~^live/.+$":
-    runOnReady: /hooks/hook.sh ready
-    runOnReadyRestart: no
-    runOnNotReady: /hooks/hook.sh not_ready
+    # Event names sent to the API stay "ready"/"not_ready"; only the MediaMTX keys were renamed.
+    runOnAvailable: /hooks/hook.sh ready
+    runOnAvailableRestart: no
+    runOnUnavailable: /hooks/hook.sh not_ready
     runOnRecordSegmentComplete: /hooks/hook.sh segment
