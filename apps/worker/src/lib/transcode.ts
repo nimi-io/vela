@@ -213,6 +213,8 @@ export function drmPackagerArgs(
     `${outDir}/master.m3u8`,
     "--mpd_output",
     `${outDir}/manifest.mpd`,
+    // segment_template output otherwise produces a dynamic (live) MPD; these are VOD assets.
+    "--generate_static_live_mpd",
   );
   return args;
 }

@@ -20,8 +20,9 @@ test("drmPackagerArgs writes the MPD next to the segments so packager emits rela
   for (const p of paths) assert.ok(p.startsWith(mpdDir), `${p} is not under ${mpdDir}`);
 });
 
-test("drmPackagerArgs uses the expected protection settings", () => {
+test("drmPackagerArgs produces a static (VOD) MPD and the expected protection settings", () => {
   const args = drmPackagerArgs("/o", "/o/_mezz", ["360p.mp4"], drm);
+  assert.ok(args.includes("--generate_static_live_mpd"));
   assert.equal(flag(args, "--protection_scheme"), "cbcs");
   assert.equal(flag(args, "--keys"), `label=:key_id=${drm.keyId}:key=${drm.key}`);
   assert.equal(flag(args, "--protection_systems"), "Widevine,PlayReady,FairPlay,CommonSystem");
