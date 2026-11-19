@@ -15,6 +15,7 @@ import { enqueue } from "./queues.js";
 import { emitEvent } from "./webhooks.js";
 import { assetJson } from "./serialize.js";
 import { storage, keys } from "./storage.js";
+import { assertPublicUrl, BlockedUrlError } from "./net-guard.js";
 
 export const playbackPolicy = z.enum(["public", "signed", "drm"]);
 
@@ -91,6 +92,24 @@ export async function createAsset(
   const primary = inputs.find((i) => !i.type || i.type === "video") ?? inputs[0];
   if (!source.sourceKey && !source.liveStreamId && !primary?.url) {
     throw new ApiError(400, "invalid_parameters", "input must include a url");
+  }
+
+  // Reject unusable or private-network URLs up front (the worker re-checks at fetch time,
+  // against the address it actually connects to, which also covers redirects and DNS rebinding).
+  for (const [i, inp] of inputs.entries()) {
+    if (!inp.url) continue;
+    if (inp.url.startsWith("vela://")) {
+      if (inp !== primary || !/^vela:\/\/assets\/[A-Za-z0-9]+$/.test(inp.url)) {
+        throw new ApiError(400, "invalid_parameters", `input[${i}].url: vela:// URLs must be vela://assets/ASSET_ID on the video input`);
+      }
+      continue;
+    }
+    try {
+      await assertPublicUrl(inp.url);
+    } catch (err) {
+      if (err instanceof BlockedUrlError) throw new ApiError(400, "invalid_parameters", `input[${i}].url: ${err.message}`);
+      throw err;
+    }
   }
 
   if (primary?.url?.startsWith("vela://assets/")) {

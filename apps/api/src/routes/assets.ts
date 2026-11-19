@@ -27,6 +27,8 @@ import {
   storage,
   keys,
   publishInvalidation,
+  assertPublicUrl,
+  BlockedUrlError,
 } from "@vela/core";
 import { body, ok, notFound, pagination, ApiError, changes, hasChanges } from "../lib/http.js";
 import { httpUrl } from "../lib/validators.js";
@@ -200,6 +202,9 @@ export const assetRoutes = new Hono<AppEnv>()
         closed_captions: z.boolean().optional(),
       }),
     );
+    await assertPublicUrl(input.url).catch((err) => {
+      throw err instanceof BlockedUrlError ? new ApiError(400, "invalid_parameters", `url: ${err.message}`) : err;
+    });
     const [t] = await getDb()
       .insert(tracks)
       .values({
