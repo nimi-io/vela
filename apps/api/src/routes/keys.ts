@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb, apiKeys, signingKeys, eq, and, desc, isNull } from "@vela/db";
-import { randomId, randomSecret, sha256, generateRsaKeyPair, apiKeyJson, signingKeyJson } from "@vela/core";
+import { randomId, randomSecret, sha256, generateRsaKeyPair, apiKeyJson, signingKeyJson, publishInvalidation } from "@vela/core";
 import { body, ok, notFound } from "../lib/http.js";
 import { sessionOnly } from "../middleware/auth.js";
 import type { AppEnv } from "../types.js";
@@ -74,5 +74,6 @@ export const signingKeyRoutes = new Hono<AppEnv>()
       .where(and(eq(signingKeys.id, c.req.param("id")), eq(signingKeys.environmentId, c.get("environmentId"))))
       .returning();
     if (!res.length) notFound("Signing key");
+    await publishInvalidation({ signingKeys: res.map((k) => `${k.environmentId}:${k.id}`) });
     return c.body(null, 204);
   });

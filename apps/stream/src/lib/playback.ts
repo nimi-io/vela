@@ -1,6 +1,6 @@
 import { importSPKI, jwtVerify, decodeProtectedHeader, type KeyLike } from "jose";
 import { getDb, playbackIds, assets, tracks, liveStreams, signingKeys, eq, and, isNull } from "@vela/db";
-import { signStreamToken, verifyStreamToken, deriveKey, PREVIEW_KID } from "@vela/core";
+import { signStreamToken, verifyStreamToken, deriveKey, PREVIEW_KID, type Invalidation } from "@vela/core";
 import { TtlCache } from "./cache.js";
 
 export type Audience = "v" | "t" | "g" | "s" | "d";
@@ -59,6 +59,12 @@ async function loadPlayback(playbackId: string): Promise<Resolved | null> {
 }
 
 const keyCache = new TtlCache<KeyLike | null>(60_000);
+
+/** Drop cached lookups the API has just made stale (published on Redis; see @vela/core invalidate). */
+export function invalidate(msg: Invalidation) {
+  for (const id of msg.playbackIds ?? []) resolveCache.delete(id);
+  for (const k of msg.signingKeys ?? []) keyCache.delete(k);
+}
 
 async function signingKey(environmentId: string, kid: string) {
   return keyCache.getOr(`${environmentId}:${kid}`, async () => {

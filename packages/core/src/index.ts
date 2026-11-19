@@ -9,3 +9,4 @@ export * from "./ladder.js";
 export * from "./assets-service.js";
 export * from "./drm.js";
 export * from "./tokens.js";
+export * from "./invalidate.js";

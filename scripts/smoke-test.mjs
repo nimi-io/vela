@@ -229,8 +229,16 @@ try {
   const clipPid = clipReady.playback_ids[0].id;
   ok("clip plays before delete", (await fetch(`${STREAM}/${clipPid}.m3u8`)).ok);
   await call("DELETE", `/v1/assets/${clip.id}`);
-  const gone = await waitFor(async () => (await fetch(`${STREAM}/${clipPid}.m3u8`)).status === 404, "deleted playback 404", 20_000, 1000).catch(() => false);
-  ok("delete asset → playback 404", gone);
+  // Must be well under the stream service's 15 s lookup cache: deletes are pushed to every replica.
+  const gone = await waitFor(async () => (await fetch(`${STREAM}/${clipPid}.m3u8`)).status === 404, "deleted playback 404", 3_000, 250).catch(() => false);
+  ok("delete asset → playback 404 within 3 s", gone);
+
+  // Revoking a signing key must stop new playback quickly (the stream caches keys for 60 s).
+  const jwt2 = await new SignJWT({}).setProtectedHeader({ alg: "RS256", kid: sk.id }).setSubject(signedPid.id).setAudience("v").setExpirationTime("1h").sign(pk);
+  ok("signed: plays before key revoked", (await fetch(`${STREAM}/${signedPid.id}.m3u8?token=${jwt2}`)).ok);
+  await call("DELETE", `/v1/signing-keys/${sk.id}`);
+  const revoked = await waitFor(async () => (await fetch(`${STREAM}/${signedPid.id}.m3u8?token=${jwt2}`)).status === 403, "revoked key 403", 3_000, 250).catch(() => false);
+  ok("signed: revoked key rejected within 3 s", revoked);
 } catch (err) {
   console.error("✘", err.message);
   failures++;

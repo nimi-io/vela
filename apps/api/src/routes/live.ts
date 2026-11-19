@@ -21,6 +21,7 @@ import {
   randomSecret,
   emitEvent,
   enqueue,
+  publishInvalidation,
 } from "@vela/core";
 import { body, ok, notFound, pagination, ApiError } from "../lib/http.js";
 import type { AppEnv } from "../types.js";
@@ -153,8 +154,9 @@ export const liveRoutes = new Hono<AppEnv>()
     const l = await loadStream(c.get("environmentId"), c.req.param("id"));
     const json = await full(l);
     const db = getDb();
-    await db.delete(playbackIds).where(eq(playbackIds.liveStreamId, l.id));
+    const removed = await db.delete(playbackIds).where(eq(playbackIds.liveStreamId, l.id)).returning({ id: playbackIds.id });
     await db.delete(liveStreams).where(eq(liveStreams.id, l.id));
+    await publishInvalidation({ playbackIds: removed.map((p) => p.id) });
     await emitEvent(l.environmentId, "video.live_stream.deleted", json, { type: "live_stream", id: l.id });
     return c.body(null, 204);
   })
@@ -204,6 +206,7 @@ export const liveRoutes = new Hono<AppEnv>()
       .where(and(eq(playbackIds.id, c.req.param("pid")), eq(playbackIds.liveStreamId, l.id)))
       .returning();
     if (!res.length) notFound("Playback ID");
+    await publishInvalidation({ playbackIds: res.map((p) => p.id) });
     return c.body(null, 204);
   })
 

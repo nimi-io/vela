@@ -26,6 +26,7 @@ import {
   emitEvent,
   storage,
   keys,
+  publishInvalidation,
 } from "@vela/core";
 import { body, ok, notFound, pagination, ApiError } from "../lib/http.js";
 import type { AppEnv } from "../types.js";
@@ -113,7 +114,8 @@ export const assetRoutes = new Hono<AppEnv>()
     const db = getDb();
     const json = await full(a);
     await db.update(assets).set({ deletedAt: new Date() }).where(eq(assets.id, a.id));
-    await db.delete(playbackIds).where(eq(playbackIds.assetId, a.id));
+    const removed = await db.delete(playbackIds).where(eq(playbackIds.assetId, a.id)).returning({ id: playbackIds.id });
+    await publishInvalidation({ playbackIds: removed.map((p) => p.id) });
     await enqueue("asset.delete", { assetId: a.id });
     await emitEvent(a.environmentId, "video.asset.deleted", json, { type: "asset", id: a.id });
     return c.body(null, 204);
@@ -164,6 +166,7 @@ export const assetRoutes = new Hono<AppEnv>()
       .where(and(eq(playbackIds.id, c.req.param("pid")), eq(playbackIds.assetId, a.id)))
       .returning();
     if (!res.length) notFound("Playback ID");
+    await publishInvalidation({ playbackIds: res.map((p) => p.id) });
     return c.body(null, 204);
   })
 
