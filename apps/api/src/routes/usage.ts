@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { getDb, usageDaily, assets, sql, eq, and, gte, lte, isNull } from "@vela/db";
-import { ok } from "../lib/http.js";
+import { z } from "zod";
+import { ok, ApiError } from "../lib/http.js";
+import { isoDay } from "../lib/validators.js";
 import type { AppEnv } from "../types.js";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
@@ -11,8 +13,14 @@ const day = (d: Date) => d.toISOString().slice(0, 10);
  */
 export const usageRoutes = new Hono<AppEnv>().get("/", async (c) => {
   const now = new Date();
-  const from = c.req.query("from") ?? day(new Date(now.getFullYear(), now.getMonth(), 1));
-  const to = c.req.query("to") ?? day(now);
+  const range = z
+    .object({ from: isoDay.default(day(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)))), to: isoDay.default(day(now)) })
+    .refine((r) => r.from <= r.to, { message: "from must not be after to", path: ["from"] })
+    .safeParse({ from: c.req.query("from"), to: c.req.query("to") });
+  if (!range.success) {
+    throw new ApiError(400, "invalid_parameters", range.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+  }
+  const { from, to } = range.data;
   const db = getDb();
   const envId = c.get("environmentId");
 

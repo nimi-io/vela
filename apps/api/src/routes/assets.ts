@@ -29,6 +29,7 @@ import {
   publishInvalidation,
 } from "@vela/core";
 import { body, ok, notFound, pagination, ApiError, changes, hasChanges } from "../lib/http.js";
+import { httpUrl } from "../lib/validators.js";
 import type { AppEnv } from "../types.js";
 
 async function loadAsset(envId: string, id: string) {
@@ -191,7 +192,7 @@ export const assetRoutes = new Hono<AppEnv>()
     const input = await body(
       c,
       z.object({
-        url: z.string().url(),
+        url: httpUrl,
         type: z.literal("text").default("text"),
         text_type: z.literal("subtitles").optional(),
         language_code: z.string().max(16).default("en"),

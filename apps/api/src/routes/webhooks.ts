@@ -12,6 +12,7 @@ import {
 } from "@vela/db";
 import { randomId, randomSecret, webhookEndpointJson, enqueue, emitEvent, WEBHOOK_EVENT_TYPES } from "@vela/core";
 import { body, ok, notFound, pagination, changes, hasChanges } from "../lib/http.js";
+import { httpUrl, webhookEventList } from "../lib/validators.js";
 import type { AppEnv } from "../types.js";
 
 async function loadEndpoint(envId: string, id: string) {
@@ -23,7 +24,7 @@ async function loadEndpoint(envId: string, id: string) {
   return w;
 }
 
-const eventsSchema = z.array(z.string()).min(1).default(["*"]);
+const eventsSchema = webhookEventList.default(["*"]);
 
 export const webhookRoutes = new Hono<AppEnv>()
   .get("/event-types", (c) => ok(c, WEBHOOK_EVENT_TYPES))
@@ -36,7 +37,7 @@ export const webhookRoutes = new Hono<AppEnv>()
     return ok(c, rows.map((w) => webhookEndpointJson(w, true)));
   })
   .post("/", async (c) => {
-    const input = await body(c, z.object({ url: z.string().url(), events: eventsSchema }));
+    const input = await body(c, z.object({ url: httpUrl, events: eventsSchema }));
     const [w] = await getDb()
       .insert(webhookEndpoints)
       .values({ id: randomId(24), environmentId: c.get("environmentId"), url: input.url, events: input.events, secret: randomSecret(24) })
@@ -48,7 +49,7 @@ export const webhookRoutes = new Hono<AppEnv>()
     const w = await loadEndpoint(c.get("environmentId"), c.req.param("id"));
     const input = await body(
       c,
-      z.object({ url: z.string().url().optional(), events: z.array(z.string()).min(1).optional(), enabled: z.boolean().optional() }),
+      z.object({ url: httpUrl.optional(), events: webhookEventList.optional(), enabled: z.boolean().optional() }),
     );
     const patch = changes(input);
     if (!hasChanges(patch)) return ok(c, webhookEndpointJson(w, true));
