@@ -11,3 +11,4 @@ dump.rdb
 test-media/
 test-results/
 .env.r2
+.env.backup

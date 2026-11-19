@@ -13,7 +13,7 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   REDIS_URL: z.string().default("redis://localhost:6379"),
 
-  // Any S3-compatible storage: Cloudflare R2, AWS S3, Backblaze B2, Wasabi, MinIO...
+  // Any S3-compatible storage: Garage (local default), Cloudflare R2, AWS S3, Backblaze B2, Wasabi...
   S3_ENDPOINT: z.string().optional(),
   S3_PUBLIC_ENDPOINT: z.string().optional(),
   S3_REGION: z.string().default("auto"),

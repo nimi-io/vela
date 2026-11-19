@@ -6,8 +6,11 @@
 # Dashboard + API: http://localhost:4000   Playback: http://localhost:4100
 # RTMP ingest: rtmp://localhost:1935/live   SRT: srt://localhost:8890
 #
-# Local storage uses MinIO. To use Cloudflare R2 (or any S3), set the S3_* values in .env
-# and start without MinIO:  docker compose up -d --build --scale minio=0 --scale minio-init=0
+# Local storage uses Garage (https://garagehq.deuxfleurs.fr), a self-hosted S3-compatible store:
+# S3 API on http://localhost:3900 (region "garage"). garage-init creates the layout, the bucket
+# and imports the access key from .env on every start (idempotent).
+# Production: use Cloudflare R2 or AWS S3. Set the S3_* values in .env and start without Garage:
+#   docker compose up -d --build --scale garage=0 --scale garage-init=0
 
 x-vela: &vela
   env_file: .env
@@ -15,6 +18,11 @@ x-vela: &vela
   depends_on:
     postgres: { condition: service_healthy }
     redis: { condition: service_healthy }
+    # required: false so the stack still starts with --scale garage-init=0 (R2 / S3).
+    garage-init: { condition: service_completed_successfully, required: false }
+  # Lets containers reach services on the host (test media, webhook receivers). Docker Desktop
+  # provides this name already; on Linux it needs the host-gateway mapping.
+  extra_hosts: ["host.docker.internal:host-gateway"]
   environment: &vela-env
     DATABASE_URL: postgres://vela:${POSTGRES_PASSWORD:-vela}@postgres:5432/vela
     REDIS_URL: redis://redis:6379
@@ -45,30 +53,40 @@ services:
       interval: 5s
       retries: 20
 
-  # Local S3-compatible storage. Not needed when using Cloudflare R2 / AWS S3.
-  minio:
-    image: minio/minio:latest
+  # Local S3-compatible storage (Garage). Not needed when using Cloudflare R2 / AWS S3.
+  # Only the S3 API (3900) is published; RPC (3901) and admin (3903) stay on the compose network.
+  garage:
+    image: dxflrs/garage:v2.5.0
     restart: unless-stopped
-    command: server /data --console-address :9001
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-vela}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-vela-secret-key}
-    ports: ["9000:9000", "9001:9001"]
-    volumes: [miniodata:/data]
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?set GARAGE_RPC_SECRET in .env (openssl rand -hex 32)}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?set GARAGE_ADMIN_TOKEN in .env (openssl rand -base64 32)}
+    volumes:
+      - ./infra/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    ports: ["3900:3900"]
+    healthcheck:
+      # The image has no shell; the garage binary itself is the probe.
+      test: ["CMD", "/garage", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
-  minio-init:
-    image: minio/mc:latest
-    depends_on: [minio]
+  # One-shot bootstrap: layout, bucket, access key, permissions. Safe to re-run.
+  garage-init:
+    image: node:22-alpine
     restart: "no"
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set local http://minio:9000 $${MINIO_USER} $${MINIO_PASS}; do sleep 1; done;
-      mc mb -p local/$${BUCKET};
-      exit 0"
+    depends_on:
+      garage: { condition: service_healthy }
+    command: ["node", "/garage-init.mjs"]
+    volumes: ["./infra/garage-init.mjs:/garage-init.mjs:ro"]
     environment:
-      MINIO_USER: ${S3_ACCESS_KEY_ID:-vela}
-      MINIO_PASS: ${S3_SECRET_ACCESS_KEY:-vela-secret-key}
-      BUCKET: ${S3_BUCKET:-vela}
+      GARAGE_ADMIN_URL: http://garage:3903
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
+      S3_BUCKET: ${S3_BUCKET:-vela}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
 
   mediamtx:
     image: bluenviron/mediamtx:latest-ffmpeg
@@ -107,6 +125,7 @@ services:
 volumes:
   pgdata:
   redisdata:
-  miniodata:
+  garage-meta:
+  garage-data:
   recordings:
   work:

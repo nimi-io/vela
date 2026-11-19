@@ -1,6 +1,6 @@
 # Vela
 
-Self-hosted video infrastructure: upload, encode, stream, broadcast live, protect with DRM and measure playback. It does what Mux does, but runs on your own servers and stores everything in any S3-compatible bucket. Cloudflare R2 is the cheapest option because it has no egress fees.
+Self-hosted video infrastructure: upload, encode, stream, broadcast live, protect with DRM and measure playback. It does what Mux does, but runs on your own servers and stores everything in any S3-compatible bucket. Locally it runs on [Garage](https://garagehq.deuxfleurs.fr), a lightweight self-hosted S3-compatible store; in production use Cloudflare R2 (the cheapest option, no egress fees) or AWS S3.
 
 ## What's included
 
@@ -52,9 +52,16 @@ Requirements: Docker with Compose.
 
 ```bash
 cp .env.example .env
-# set MASTER_KEY and INTERNAL_SECRET:  openssl rand -hex 32
+# Fill in the secrets in .env:
+#   MASTER_KEY, INTERNAL_SECRET, GARAGE_RPC_SECRET:  openssl rand -hex 32
+#   GARAGE_ADMIN_TOKEN:                              openssl rand -base64 32
+#   S3_ACCESS_KEY_ID:  echo GK$(openssl rand -hex 12)     S3_SECRET_ACCESS_KEY:  openssl rand -hex 32
 docker compose up -d --build
+# Allow browser uploads to Garage (one time; sets CORS on the bucket):
+node --env-file=.env scripts/setup-bucket.mjs --origins http://localhost:4000
 ```
+
+Storage is [Garage](https://garagehq.deuxfleurs.fr) (`dxflrs/garage`, config in `infra/garage.toml`), with its S3 API on http://localhost:3900 (region `garage`). On every start the one-shot `garage-init` service (`infra/garage-init.mjs`) assigns the single-node layout, creates the `vela` bucket and imports the access key from `.env`; it is safe to re-run. Inspect it with the CLI: `docker compose exec garage /garage bucket info vela`, or with any S3 client: `aws --endpoint-url http://localhost:3900 --region garage s3 ls s3://vela`.
 
 Open http://localhost:4000 and create an account. The first account always works; set `SIGNUPS_ENABLED=false` afterwards if the instance is private. You get a Development and a Production environment.
 
@@ -84,9 +91,11 @@ Or use the web component:
 
 ## Production with Cloudflare R2
 
+Garage is the local default; for production use R2 (or AWS S3) instead.
+
 1. Create an R2 bucket and an R2 API token with Object Read & Write. Put the values in `.env` (see the R2 block in `.env.example`) and clear `S3_PUBLIC_ENDPOINT`.
 2. Allow browser uploads: `pnpm setup:bucket -- --origins https://app.example.com` (or run `node --env-file=.env scripts/setup-bucket.mjs`).
-3. Start without MinIO: `docker compose up -d --build --scale minio=0 --scale minio-init=0`.
+3. Start without Garage: `docker compose up -d --build --scale garage=0 --scale garage-init=0`.
 4. Put the services behind HTTPS (Caddy, nginx, Cloudflare Tunnel…). Set `API_PUBLIC_URL`, `STREAM_PUBLIC_URL`, `DASHBOARD_URL` to the public URLs and `SESSION_COOKIE_SECURE=true`.
 5. Put a CDN in front of the stream service (for example a Cloudflare-proxied `stream.example.com`). Segment responses are `immutable` and cache well. Manifests are short-lived. Alternatively set `STREAM_SEGMENT_MODE=redirect` to send segment traffic straight to R2 with presigned URLs.
 6. Expose MediaMTX ports 1935/tcp (RTMP) and 8890/udp (SRT) and set `LIVE_RTMP_PUBLIC_URL` / `LIVE_SRT_PUBLIC_URL`. For RTMPS, terminate TLS in front of 1935 and set `LIVE_RTMPS_PUBLIC_URL`.
@@ -129,7 +138,7 @@ Events are POSTed as JSON with a `Vela-Signature: t=<unix>,v1=<hmac-sha256(secre
 
 ```bash
 pnpm install
-cp .env.example .env    # point S3_* at MinIO or R2, set DATABASE_URL/REDIS_URL to local services
+cp .env.example .env    # point S3_* at Garage (http://localhost:3900) or R2, set DATABASE_URL/REDIS_URL to local services
 pnpm db:migrate
 pnpm dev                # api :4000, stream :4100, worker, dashboard :5173 (proxies the API)
 pnpm typecheck && pnpm test

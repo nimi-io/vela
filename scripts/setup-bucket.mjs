@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
  * Configures CORS on the storage bucket so browsers can PUT direct uploads and fetch media.
- * Works with Cloudflare R2, AWS S3, Backblaze B2, Wasabi. (MinIO allows all origins by default.)
+ * Works with Garage (the local default), Cloudflare R2, AWS S3, Backblaze B2, Wasabi.
+ *
+ * Runs from the host, so it talks to S3_PUBLIC_ENDPOINT when set (S3_ENDPOINT is often a
+ * docker-internal hostname such as http://garage:3900). Override with S3_SETUP_ENDPOINT.
  *
  *   node --env-file=.env scripts/setup-bucket.mjs [--origins https://app.example.com,https://admin.example.com]
  */
@@ -17,9 +20,10 @@ for (const k of ["S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]) {
   }
 }
 
+const endpoint = e.S3_SETUP_ENDPOINT || e.S3_PUBLIC_ENDPOINT || e.S3_ENDPOINT || undefined;
 const s3 = new S3Client({
   region: e.S3_REGION ?? "auto",
-  endpoint: e.S3_ENDPOINT || undefined,
+  endpoint,
   forcePathStyle: (e.S3_FORCE_PATH_STYLE ?? "true") === "true",
   credentials: { accessKeyId: e.S3_ACCESS_KEY_ID, secretAccessKey: e.S3_SECRET_ACCESS_KEY },
 });
@@ -47,4 +51,4 @@ await s3.send(
     },
   }),
 );
-console.log(`CORS configured on ${e.S3_BUCKET} for ${origins.join(", ")}`);
+console.log(`CORS configured on ${e.S3_BUCKET} (${endpoint ?? "AWS S3"}) for ${origins.join(", ")}`);

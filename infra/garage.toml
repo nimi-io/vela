@@ -1,0 +1,20 @@
+# Garage (https://garagehq.deuxfleurs.fr) single-node config for local Vela development.
+# Secrets are NOT stored here: docker-compose passes GARAGE_RPC_SECRET and GARAGE_ADMIN_TOKEN
+# from .env, which override rpc_secret / admin_token below.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+# Vela uses path-style URLs (S3_FORCE_PATH_STYLE=true), so vhost-style is only a fallback.
+root_domain = ".s3.garage.localhost"
+
+[admin]
+api_bind_addr = "[::]:3903"
