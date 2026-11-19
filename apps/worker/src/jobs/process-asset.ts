@@ -19,6 +19,7 @@ import {
 import { probe, aspectRatio } from "../lib/media.js";
 import { transcode, poster, storyboard } from "../lib/transcode.js";
 import { downloadUrl, downloadKey } from "../lib/source.js";
+import { cleanUpIfDeleted } from "../lib/deleted.js";
 
 const log = createLogger("worker:process");
 
@@ -159,6 +160,12 @@ export async function processAsset(job: Job<{ assetId: string }>) {
     await storage.putDir(out, keys.assetHlsPrefix(assetId));
     if (dash) await storage.putDir(path.join(work, "out", "dash"), keys.assetDashPrefix(assetId));
 
+    // Deleted while we were working? Our uploads may have landed after the delete job ran.
+    if (await cleanUpIfDeleted(assetId)) {
+      log.info({ assetId }, "asset was deleted during processing; removed its files");
+      return { skipped: true, deleted: true };
+    }
+
     /* 8. Mark ready. */
     const renditions: Rendition[] = ladder.map((r) => ({ name: r.name, width: r.width, height: r.height, bitrate: r.videoBitrate, codec: "h264" }));
     const top = ladder[0];
@@ -240,6 +247,7 @@ export async function processAsset(job: Job<{ assetId: string }>) {
     log.info({ assetId, duration, renditions: renditions.length }, "asset ready");
     return { duration, renditions: renditions.length };
   } catch (err: any) {
+    if (await cleanUpIfDeleted(assetId).catch(() => false)) return { skipped: true, deleted: true };
     const final = err instanceof InputError || job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
     log.error({ assetId, err: err.message, final }, "processing failed");
     if (final) {

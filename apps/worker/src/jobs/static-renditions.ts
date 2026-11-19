@@ -4,6 +4,7 @@ import type { Job } from "bullmq";
 import { getDb, assets, eq, type StaticRendition } from "@vela/db";
 import { env, storage, keys, emitEvent, loadAssetJson, randomId, createLogger } from "@vela/core";
 import { ffmpeg, probe } from "../lib/media.js";
+import { cleanUpIfDeleted } from "../lib/deleted.js";
 
 const log = createLogger("worker:static");
 
@@ -98,6 +99,7 @@ export async function staticRenditions(job: Job<{ assetId: string }>) {
       });
       await fsp.rm(out, { force: true });
     }
+    if (await cleanUpIfDeleted(asset.id)) return { skipped: true, deleted: true };
     await db.update(assets).set({ staticRenditions: results }).where(eq(assets.id, asset.id));
     await emitEvent(asset.environmentId, "video.asset.static_renditions.ready", (await loadAssetJson(asset.id))!, { type: "asset", id: asset.id });
     return { files: results.length };

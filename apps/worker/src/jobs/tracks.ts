@@ -7,6 +7,7 @@ import { ffmpeg, probe } from "../lib/media.js";
 import { downloadUrl, assetMaster } from "../lib/source.js";
 import { transcribe, transcriptionEnabled, llmJson } from "../lib/ai.js";
 import { buildVtt, parseVtt, cuesToTranscript, type Cue } from "../lib/vtt.js";
+import { cleanUpIfDeleted } from "../lib/deleted.js";
 
 const log = createLogger("worker:tracks");
 
@@ -31,6 +32,10 @@ async function loadTrack(trackId: string) {
 
 async function markReady(trackId: string, storageKey: string, meta?: Record<string, unknown>) {
   const db = getDb();
+  const [cur] = await db.select({ assetId: tracks.assetId }).from(tracks).where(eq(tracks.id, trackId));
+  // Asset (or track) deleted while we worked: don't leave the VTT we just wrote behind.
+  if (!cur) return void (await storage.deleteKey(storageKey).catch(() => {}));
+  if (await cleanUpIfDeleted(cur.assetId)) return;
   const [t] = await db.update(tracks).set({ status: "ready", storageKey, ...(meta ? { meta } : {}) }).where(eq(tracks.id, trackId)).returning();
   const [a] = await db.select().from(assets).where(eq(assets.id, t!.assetId));
   await emitEvent(a!.environmentId, "video.asset.track.ready", { asset_id: a!.id, ...trackJson(t!) }, { type: "track", id: t!.id });
