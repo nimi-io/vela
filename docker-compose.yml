@@ -28,6 +28,7 @@ x-vela: &vela
     REDIS_URL: redis://redis:6379
     MEDIAMTX_HLS_URL: http://mediamtx:8888
     MEDIAMTX_RTMP_URL: rtmp://mediamtx:1935
+    MEDIAMTX_API_URL: http://mediamtx:9997
 
 services:
   postgres:

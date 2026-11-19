@@ -23,6 +23,8 @@ import {
   emitEvent,
   enqueue,
   publishInvalidation,
+  kickLivePublisher,
+  createLogger,
 } from "@vela/core";
 import { body, ok, notFound, pagination, ApiError } from "../lib/http.js";
 import type { AppEnv } from "../types.js";
@@ -44,6 +46,35 @@ async function full(l: typeof liveStreams.$inferSelect) {
 }
 
 const streamKey = () => randomSecret(18).replace(/[-_]/g, "x");
+
+const log = createLogger("api:live");
+
+/**
+ * Disconnects the encoder publishing with this stream's key. MediaMTX only asks the API for
+ * permission when a connection starts, so disabling a stream, ending its session or rotating its
+ * key has no effect on an encoder that is already connected until it is kicked.
+ *
+ * If the stream was connected, waits (up to 5 s) for MediaMTX's not_ready hook to mark it
+ * disconnected. MediaMTX closes the recording and fires the last segment hook at the same moment,
+ * so afterwards the session's final hooks have reached the API while they can still be resolved
+ * by the current stream key, and finalizing won't race the last recording segment.
+ */
+async function disconnectEncoder(l: typeof liveStreams.$inferSelect) {
+  let kicked = false;
+  try {
+    kicked = await kickLivePublisher(l.streamKey);
+  } catch (err) {
+    log.warn({ liveStreamId: l.id, err: (err as Error).message }, "could not disconnect encoder");
+    return;
+  }
+  if (!kicked || !l.connected) return;
+  for (let i = 0; i < 50; i++) {
+    const [s] = await getDb().select({ connected: liveStreams.connected }).from(liveStreams).where(eq(liveStreams.id, l.id));
+    if (!s?.connected) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  log.warn({ liveStreamId: l.id }, "encoder kicked but MediaMTX did not report the disconnect within 5s");
+}
 
 const simulcastInput = z.object({
   url: z.string().regex(/^rtmps?:\/\//, "must be an rtmp:// or rtmps:// URL"),
@@ -166,14 +197,22 @@ export const liveRoutes = new Hono<AppEnv>()
 
   .post("/:id/reset-stream-key", async (c) => {
     const l = await loadStream(c.get("environmentId"), c.req.param("id"));
+    // The old key must stop working now, including for an encoder that is already live. Its
+    // session stays open for the reconnect window, so it can continue with the new key.
+    await disconnectEncoder(l);
     const [u] = await getDb().update(liveStreams).set({ streamKey: streamKey() }).where(eq(liveStreams.id, l.id)).returning();
     return ok(c, await full(u!));
   })
 
   .put("/:id/disable", async (c) => {
     const l = await loadStream(c.get("environmentId"), c.req.param("id"));
-    const [u] = await getDb().update(liveStreams).set({ status: "disabled" }).where(eq(liveStreams.id, l.id)).returning();
-    if (l.activeSessionId) await enqueue("live.finalize", { liveStreamId: l.id, sessionId: l.activeSessionId });
+    // Disable first so the auth hook refuses the kicked encoder if it tries to reconnect.
+    await getDb().update(liveStreams).set({ status: "disabled" }).where(eq(liveStreams.id, l.id));
+    await disconnectEncoder(l);
+    if (l.activeSessionId) {
+      await enqueue("live.finalize", { liveStreamId: l.id, sessionId: l.activeSessionId }, { jobId: `finalize-now-${l.activeSessionId}` });
+    }
+    const [u] = await getDb().select().from(liveStreams).where(eq(liveStreams.id, l.id));
     return ok(c, await full(u!));
   })
 
@@ -188,8 +227,10 @@ export const liveRoutes = new Hono<AppEnv>()
   .put("/:id/complete", async (c) => {
     const l = await loadStream(c.get("environmentId"), c.req.param("id"));
     if (!l.activeSessionId) throw new ApiError(400, "invalid_request", "Live stream has no active session");
+    await disconnectEncoder(l);
     await enqueue("live.finalize", { liveStreamId: l.id, sessionId: l.activeSessionId }, { jobId: `finalize-now-${l.activeSessionId}` });
-    return ok(c, await full(l));
+    const [u] = await getDb().select().from(liveStreams).where(eq(liveStreams.id, l.id));
+    return ok(c, await full(u!));
   })
 
   .post("/:id/playback-ids", async (c) => {

@@ -13,6 +13,8 @@ import {
   loadAssetJson,
   randomId,
   createLogger,
+  getQueue,
+  QUEUES,
 } from "@vela/core";
 import { ffmpeg } from "../lib/media.js";
 import { run } from "../lib/exec.js";
@@ -53,6 +55,31 @@ async function streamJson(id: string) {
   return liveStreamJson(l, pids, targets);
 }
 
+const SEGMENT_JOB_STATES = ["active", "waiting", "delayed", "prioritized", "paused"] as const;
+
+/**
+ * Waits until every recording segment of the session has been uploaded: no live.segment job for
+ * it is queued, running or waiting to retry, and the stored segment count is stable across one
+ * poll (covering a segment hook that is still on its way from MediaMTX). Counting rows alone missed
+ * a final segment whose upload was still running, which lost the end of the recording (or all of
+ * it, with "no_recording", for sessions shorter than recordSegmentDuration).
+ */
+async function waitForSegmentUploads(sessionId: string, timeoutMs = 10 * 60_000) {
+  const db = getDb();
+  const queue = getQueue(QUEUES.live);
+  const deadline = Date.now() + timeoutMs;
+  let last = -1;
+  while (Date.now() < deadline) {
+    const jobs = await queue.getJobs([...SEGMENT_JOB_STATES]);
+    const pending = jobs.some((j) => j?.name === "live.segment" && j.data?.sessionId === sessionId);
+    const segs = await db.select({ id: liveSegments.id }).from(liveSegments).where(eq(liveSegments.sessionId, sessionId));
+    if (!pending && segs.length === last) return;
+    last = segs.length;
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  log.warn({ sessionId }, "timed out waiting for recording segment uploads");
+}
+
 /**
  * Runs after the reconnect window. Ends the session, stitches the recording into the live
  * asset's master file and hands it to the normal VOD pipeline.
@@ -68,15 +95,8 @@ export async function liveFinalize(job: Job<{ liveStreamId: string; sessionId: s
     if (sinceDisconnect < stream.reconnectWindow * 1000) return { skipped: "newer disconnect pending" };
   }
 
-  // Let in-flight segment uploads land.
-  let last = -1;
-  for (let i = 0; i < 10; i++) {
-    const segs = await db.select().from(liveSegments).where(eq(liveSegments.sessionId, job.data.sessionId));
-    if (segs.length === last) break;
-    last = segs.length;
-    await new Promise((r) => setTimeout(r, 3000));
-  }
-
+  // End the session first: an encoder that (re)connects from now on starts a new session instead
+  // of joining the one being finalized. Segment jobs already queued carry their own session ID.
   const assetId = stream.activeAssetId;
   await db
     .update(liveStreams)
@@ -91,6 +111,8 @@ export async function liveFinalize(job: Job<{ liveStreamId: string; sessionId: s
   if (json) await emitEvent(stream.environmentId, "video.live_stream.idle", json, { type: "live_stream", id: stream.id });
 
   if (!assetId) return { recorded: false };
+
+  await waitForSegmentUploads(job.data.sessionId);
   const segments = await db
     .select()
     .from(liveSegments)
