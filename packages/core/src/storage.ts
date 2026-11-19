@@ -223,7 +223,6 @@ export const storage = {
   },
 };
 
-/* Storage layout, kept in one place so every service agrees. */
 /**
  * Where an asset's original media lives and which range of it belongs to the asset.
  * Clips used to read their parent's master with an offset, so deleting the parent broke the
@@ -240,6 +239,7 @@ export function masterSource(asset: {
   return { key: `assets/${clip.url!.slice("vela://assets/".length)}/source`, start: clip.start_time ?? 0, end: clip.end_time };
 }
 
+/* Storage layout, kept in one place so every service agrees. */
 export const keys = {
   uploadSource: (uploadId: string) => `uploads/${uploadId}/source`,
   assetSource: (assetId: string) => `assets/${assetId}/source`,
