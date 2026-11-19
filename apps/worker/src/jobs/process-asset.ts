@@ -3,7 +3,6 @@ import path from "node:path";
 import type { Job } from "bullmq";
 import { getDb, assets, tracks, uploads, usageDaily, eq, and, sql, type Rendition } from "@vela/db";
 import {
-  env,
   storage,
   keys,
   buildLadder,
@@ -21,6 +20,7 @@ import { probe, aspectRatio } from "../lib/media.js";
 import { transcode, poster, storyboard } from "../lib/transcode.js";
 import { downloadUrl, downloadKey, cutClipMaster } from "../lib/source.js";
 import { cleanUpIfDeleted } from "../lib/deleted.js";
+import { makeJobWorkDir } from "../lib/workdir.js";
 
 const log = createLogger("worker:process");
 
@@ -33,8 +33,7 @@ export async function processAsset(job: Job<{ assetId: string }>) {
   if (!asset || asset.deletedAt) return { skipped: true };
   if (asset.status === "ready") return { skipped: true };
 
-  const work = path.join(env().WORK_DIR, `${assetId}-${randomId(6)}`);
-  await fsp.mkdir(work, { recursive: true });
+  const work = await makeJobWorkDir(job);
 
   let lastWrite = 0;
   const setProgress = async (state: string, progress: number, force = false) => {
