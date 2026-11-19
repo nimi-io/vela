@@ -103,10 +103,10 @@ export function ApiKeysPage() {
       )}
       {created && (
         <Modal title="Save your secret now" description="This is the only time the secret is shown. Store it in your server's environment variables." onClose={() => setCreated(null)} wide footer={<button className="btn primary" onClick={() => setCreated(null)}>I've saved it</button>}>
-          <Field label="Token ID">
+          <Field group label="Token ID">
             <CopyField value={created.id} label="Token ID" />
           </Field>
-          <Field label="Secret">
+          <Field group label="Secret">
             <CopyField value={created.secret} label="Secret" />
           </Field>
           <Code>{`curl ${config?.api_url}/v1/assets \\\n  -u ${created.id}:${created.secret}`}</Code>
@@ -215,10 +215,10 @@ export async function playbackToken(playbackId, aud = "v") {
       </div>
       {created && (
         <Modal title="Save your private key now" description="It's shown once and never stored by Vela. Put it in VELA_SIGNING_PRIVATE_KEY on your server." wide onClose={() => setCreated(null)} footer={<button className="btn primary" onClick={() => setCreated(null)}>I've saved it</button>}>
-          <Field label="Key ID">
+          <Field group label="Key ID">
             <CopyField value={created.id} label="Key ID" />
           </Field>
-          <Field label="Private key (base64 PEM)">
+          <Field group label="Private key (base64 PEM)">
             <CopyField value={created.private_key} label="Private key" />
           </Field>
         </Modal>

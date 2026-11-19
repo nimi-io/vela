@@ -215,15 +215,15 @@ export function LivePage() {
 
           <Panel title="Connect your encoder" description="In OBS: Settings, Stream, Service: Custom.">
             <div className="stack">
-              <Field label="RTMP server">
+              <Field group label="RTMP server">
                 <CopyField value={l.ingest.rtmp.url} label="Server URL" />
               </Field>
               {l.ingest.rtmps && (
-                <Field label="RTMPS server">
+                <Field group label="RTMPS server">
                   <CopyField value={l.ingest.rtmps.url} label="Server URL" />
                 </Field>
               )}
-              <Field label="Stream key" hint="Anyone with this key can broadcast to your stream.">
+              <Field group label="Stream key" hint="Anyone with this key can broadcast to your stream.">
                 <div className="row">
                   <div className="grow">
                     <CopyField value={l.stream_key} display={reveal ? undefined : "•".repeat(24)} label="Stream key" />
@@ -236,7 +236,7 @@ export function LivePage() {
                   </button>
                 </div>
               </Field>
-              <Field label="SRT URL" hint="For encoders that support SRT (lower latency, better on lossy networks).">
+              <Field group label="SRT URL" hint="For encoders that support SRT (lower latency, better on lossy networks).">
                 <CopyField value={l.ingest.srt.url} display={reveal ? undefined : l.ingest.srt.url.replace(l.stream_key, "•".repeat(12))} label="SRT URL" />
               </Field>
             </div>

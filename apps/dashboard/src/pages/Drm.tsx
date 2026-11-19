@@ -132,7 +132,7 @@ export function DrmPage() {
         <Panel title="Player endpoints" description="The Vela player uses these automatically. Use them directly if you bring your own player.">
           <div className="stack-sm">
             {Object.entries(d.player_endpoints).map(([k, v]) => (
-              <Field key={k} label={k.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}>
+              <Field group key={k} label={k.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}>
                 <CopyField value={v} />
               </Field>
             ))}
