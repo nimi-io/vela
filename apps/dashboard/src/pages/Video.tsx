@@ -20,6 +20,13 @@ function usePreviewToken(pid?: { id: string; policy: string }) {
 
 export function VideoPage() {
   const { id } = useParams();
+  // Remount per asset: React Router keeps this element mounted when only :id changes
+  // (e.g. "Create clip" navigates from the source to the clip), and the child panels seed
+  // local state from the asset (rename box, clip range, filmstrip, playback policy).
+  return <VideoView key={id} id={id!} />;
+}
+
+function VideoView({ id }: { id: string }) {
   const asset = useOne<Asset>("asset", `/v1/assets/${id}`, (a) => (a?.status === "preparing" || a?.tracks.some((t) => t.status === "preparing") || a?.static_renditions?.status === "preparing" ? 3000 : false));
   const a = asset.data;
   const pid = a?.playback_ids[0];
