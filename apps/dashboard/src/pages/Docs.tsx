@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { get } from "../lib/api";
 import { useSession } from "../lib/session";
 import { PageHead, Segmented, CopyField } from "../components/ui";
-import { DocsCtx, readLang, storeLang, useDocs, CodeBlock, Sample, Step, curlCmd, nodeInit, js, type Lang, type DocVars } from "../components/docs";
+import { DocsCtx, readLang, storeLang, useDocs, CodeBlock, Sample, Step, curlCmd, nodeInit, js, pretty, type Lang, type DocVars } from "../components/docs";
 import { ReferenceSection } from "./DocsReference";
 
 type Asset = { id: string; title: string | null; duration: number | null; playback_ids: { id: string; policy: string }[] };
@@ -475,7 +475,7 @@ const endpoint = await vela.webhooks.create("${body.url}", ${js(body.events)});
         <p>
           Each event is a JSON <code>POST</code> with the headers <code>Vela-Signature</code>, <code>Vela-Event-Id</code> and <code>Vela-Event-Type</code>. <code>data</code> is the full object, the same as the API returns (here the asset from <code>GET /v1/assets/:id</code>, shortened).
         </p>
-        <CodeBlock label="JSON" code={JSON.stringify(payload, null, 2)} />
+        <CodeBlock label="JSON" code={pretty(payload)} />
         <p>
           Answer with any <code>2xx</code> within 15 seconds. Anything else (including redirects and timeouts) is retried with exponential backoff, up to 10 attempts; <code>attempts</code> counts them. Every delivery shows up in the endpoint's delivery log, where you can redeliver it.
         </p>

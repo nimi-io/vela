@@ -95,10 +95,15 @@ export function Step({ n, title, children }: { n?: number; title: ReactNode; chi
 
 export const AUTH = '-u "$VELA_TOKEN_ID:$VELA_TOKEN_SECRET"';
 
+/** JSON with 2-space indent, but short arrays of plain values kept on one line. */
+export function pretty(value: unknown) {
+  return JSON.stringify(value, null, 2).replace(/\[\s+([^[\]{}]*?)\s+\]/g, (_, inner: string) => `[${inner.split(/,\s*/).join(", ")}]`);
+}
+
 /** A multi-line curl command with Basic auth and an optional JSON body. */
 export function curlCmd(method: string, url: string, body?: unknown) {
   const lines = [`curl${method === "GET" ? "" : ` -X ${method}`} "${url}"`, `  ${AUTH}`];
-  if (body !== undefined) lines.push(`  -H "Content-Type: application/json"`, `  -d '${JSON.stringify(body, null, 2)}'`);
+  if (body !== undefined) lines.push(`  -H "Content-Type: application/json"`, `  -d '${pretty(body)}'`);
   return lines.join(" \\\n");
 }
 
@@ -113,6 +118,6 @@ const vela = new Vela({ baseUrl: "${api}" });
 
 /** Formats an object literal for JS samples (JSON with unquoted keys). */
 export function js(value: unknown, indent = 0) {
-  const s = JSON.stringify(value, null, 2).replace(/"([a-z_][a-z0-9_]*)":/gi, "$1:");
+  const s = pretty(value).replace(/"([a-z_][a-z0-9_]*)":/gi, "$1:");
   return indent ? s.replace(/\n/g, "\n" + " ".repeat(indent)) : s;
 }
