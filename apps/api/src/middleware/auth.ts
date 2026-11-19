@@ -92,6 +92,15 @@ export const requireEnvironment: MiddlewareHandler<AppEnv> = async (c, next) => 
   await next();
 };
 
+/**
+ * Read-only access tokens are for reporting/monitoring; they must not hand out credentials that
+ * allow writes elsewhere (a webhook signing secret lets the holder forge webhooks to your app).
+ */
+export function canSeeSecrets(c: Context) {
+  const auth = c.get("auth") as AppEnv["Variables"]["auth"] | undefined;
+  return !!auth && !(auth.kind === "key" && auth.permissions === "read");
+}
+
 /** Only dashboard sessions (not API keys) may manage credentials. */
 export const sessionOnly: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (c.get("auth")?.kind !== "session") {

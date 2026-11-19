@@ -13,6 +13,7 @@ import {
 import { randomId, randomSecret, webhookEndpointJson, enqueue, emitEvent, WEBHOOK_EVENT_TYPES } from "@vela/core";
 import { body, ok, notFound, pagination, changes, hasChanges } from "../lib/http.js";
 import { httpUrl, webhookEventList } from "../lib/validators.js";
+import { canSeeSecrets } from "../middleware/auth.js";
 import type { AppEnv } from "../types.js";
 
 async function loadEndpoint(envId: string, id: string) {
@@ -34,7 +35,7 @@ export const webhookRoutes = new Hono<AppEnv>()
       .from(webhookEndpoints)
       .where(eq(webhookEndpoints.environmentId, c.get("environmentId")))
       .orderBy(desc(webhookEndpoints.createdAt));
-    return ok(c, rows.map((w) => webhookEndpointJson(w, true)));
+    return ok(c, rows.map((w) => webhookEndpointJson(w, canSeeSecrets(c))));
   })
   .post("/", async (c) => {
     const input = await body(c, z.object({ url: httpUrl, events: eventsSchema }));
@@ -44,7 +45,7 @@ export const webhookRoutes = new Hono<AppEnv>()
       .returning();
     return ok(c, webhookEndpointJson(w!, true), 201);
   })
-  .get("/:id", async (c) => ok(c, webhookEndpointJson(await loadEndpoint(c.get("environmentId"), c.req.param("id")), true)))
+  .get("/:id", async (c) => ok(c, webhookEndpointJson(await loadEndpoint(c.get("environmentId"), c.req.param("id")), canSeeSecrets(c))))
   .patch("/:id", async (c) => {
     const w = await loadEndpoint(c.get("environmentId"), c.req.param("id"));
     const input = await body(
