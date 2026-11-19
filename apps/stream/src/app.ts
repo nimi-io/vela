@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { Readable } from "node:stream";
 import fs from "node:fs";
 import path from "node:path";
-import { env, storage, keys, createLogger, getContentKey, getDrmSettings, redis } from "@vela/core";
+import { env, storage, keys, createLogger, getContentKey, getDrmSettings, redis, checkHealth } from "@vela/core";
 import { getDb, sql } from "@vela/db";
 import {
   resolvePlayback,
@@ -182,13 +182,9 @@ export function createApp() {
   });
 
   app.get("/health", async (c) => {
-    try {
-      await getDb().execute(sql`select 1`);
-      await redis().ping();
-      return c.json({ status: "ok" });
-    } catch (err) {
-      return c.json({ status: "degraded", error: String(err) }, 503);
-    }
+    const h = await checkHealth({ database: () => getDb().execute(sql`select 1`), redis: () => redis().ping() });
+    if (h.ok) return c.json({ status: "ok" });
+    return c.json({ status: "degraded", error: Object.entries(h.failures).map(([k, v]) => `${k}: ${v}`).join("; "), checks: h.failures }, 503);
   });
 
   /* Player assets + embed page */
