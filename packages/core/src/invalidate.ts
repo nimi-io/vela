@@ -1,4 +1,5 @@
 import type { Redis } from "ioredis";
+import { getDb, playbackIds, eq } from "@vela/db";
 import { redis } from "./queues.js";
 import { createLogger } from "./logger.js";
 
@@ -26,6 +27,20 @@ export async function publishInvalidation(msg: Invalidation): Promise<void> {
   } catch (err) {
     // Never fail the API request over this; replicas fall back to their cache TTL.
     log.warn({ err }, "failed to publish cache invalidation");
+  }
+}
+
+/**
+ * Invalidate every playback ID of an asset. Call after changing anything the stream service reads
+ * from the asset row (status, renditions, static MP4s, text tracks) so viewers see it at once
+ * instead of after the cache TTL.
+ */
+export async function invalidateAssetPlayback(assetId: string): Promise<void> {
+  try {
+    const rows = await getDb().select({ id: playbackIds.id }).from(playbackIds).where(eq(playbackIds.assetId, assetId));
+    await publishInvalidation({ playbackIds: rows.map((r) => r.id) });
+  } catch (err) {
+    log.warn({ err, assetId }, "failed to invalidate asset playback");
   }
 }
 

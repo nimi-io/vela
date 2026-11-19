@@ -2,7 +2,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import type { Job } from "bullmq";
 import { getDb, assets, tracks, eq } from "@vela/db";
-import { env, storage, keys, emitEvent, trackJson, randomId, createLogger } from "@vela/core";
+import { env, storage, keys, emitEvent, trackJson, randomId, createLogger, invalidateAssetPlayback } from "@vela/core";
 import { ffmpeg, probe } from "../lib/media.js";
 import { downloadUrl, assetMaster } from "../lib/source.js";
 import { transcribe, transcriptionEnabled, llmJson } from "../lib/ai.js";
@@ -38,6 +38,7 @@ async function markReady(trackId: string, storageKey: string, meta?: Record<stri
   if (await cleanUpIfDeleted(cur.assetId)) return;
   const [t] = await db.update(tracks).set({ status: "ready", storageKey, ...(meta ? { meta } : {}) }).where(eq(tracks.id, trackId)).returning();
   const [a] = await db.select().from(assets).where(eq(assets.id, t!.assetId));
+  await invalidateAssetPlayback(a!.id);
   await emitEvent(a!.environmentId, "video.asset.track.ready", { asset_id: a!.id, ...trackJson(t!) }, { type: "track", id: t!.id });
 }
 

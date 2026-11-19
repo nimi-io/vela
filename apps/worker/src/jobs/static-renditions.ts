@@ -2,7 +2,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import type { Job } from "bullmq";
 import { getDb, assets, eq, type StaticRendition } from "@vela/db";
-import { env, storage, keys, emitEvent, loadAssetJson, randomId, createLogger } from "@vela/core";
+import { env, storage, keys, emitEvent, loadAssetJson, randomId, createLogger, invalidateAssetPlayback } from "@vela/core";
 import { ffmpeg, probe } from "../lib/media.js";
 import { assetMaster } from "../lib/source.js";
 import { cleanUpIfDeleted } from "../lib/deleted.js";
@@ -94,6 +94,7 @@ export async function staticRenditions(job: Job<{ assetId: string }>) {
     }
     if (await cleanUpIfDeleted(asset.id)) return { skipped: true, deleted: true };
     await db.update(assets).set({ staticRenditions: results }).where(eq(assets.id, asset.id));
+    await invalidateAssetPlayback(asset.id);
     await emitEvent(asset.environmentId, "video.asset.static_renditions.ready", (await loadAssetJson(asset.id))!, { type: "asset", id: asset.id });
     return { files: results.length };
   } catch (err: any) {
@@ -103,6 +104,7 @@ export async function staticRenditions(job: Job<{ assetId: string }>) {
         .update(assets)
         .set({ staticRenditions: pending.map((p) => ({ ...p, status: "errored" as const })) })
         .where(eq(assets.id, asset.id));
+      await invalidateAssetPlayback(asset.id);
     }
     throw err;
   } finally {

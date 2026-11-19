@@ -168,8 +168,9 @@ try {
   const mp4 = await waitFor(async () => {
     const r = await fetch(`${STREAM}/${pid}/capped-1080p.mp4`, { redirect: "manual" });
     return r.status === 302 ? r : null;
-  }, "mp4 redirect", 20_000, 1000).catch(() => null);
-  ok("mp4 download redirect", !!mp4);
+  }, "mp4 redirect", 3_000, 250).catch(() => null);
+  // The worker invalidates the stream's 15 s lookup cache when renditions are ready.
+  ok("mp4 download redirect within 3 s of ready", !!mp4);
   const dl = mp4 ? await fetch(mp4.headers.get("location")) : null;
   const dlBytes = dl?.ok ? (await dl.arrayBuffer()).byteLength : 0;
   ok("mp4 download from storage", !!dl?.ok && dlBytes > 10_000 && dl.headers.get("content-type") === "video/mp4", `HTTP ${dl?.status}, ${dlBytes} bytes`);

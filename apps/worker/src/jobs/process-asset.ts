@@ -15,6 +15,7 @@ import {
   getDrmSettings,
   createLogger,
   randomId,
+  invalidateAssetPlayback,
 } from "@vela/core";
 import { probe, aspectRatio } from "../lib/media.js";
 import { transcode, poster, storyboard } from "../lib/transcode.js";
@@ -231,6 +232,7 @@ export async function processAsset(job: Job<{ assetId: string }>) {
     }
 
     await recordUsage(asset.environmentId, duration, asset.isLive);
+    await invalidateAssetPlayback(assetId);
 
     /* 9. Follow-up work. */
     const textTracks = await db.select().from(tracks).where(and(eq(tracks.assetId, assetId), eq(tracks.type, "text")));
