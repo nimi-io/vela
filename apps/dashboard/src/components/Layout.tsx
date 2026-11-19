@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSession } from "../lib/session";
 import { api } from "../lib/api";
-import { IconHome, IconVideo, IconLive, IconChart, IconHook, IconKey, IconSign, IconShield, IconGauge, IconSettings, IconMenu, IconLogout } from "./icons";
+import { IconHome, IconVideo, IconLive, IconChart, IconHook, IconBook, IconKey, IconSign, IconShield, IconGauge, IconSettings, IconMenu, IconLogout } from "./icons";
 
 const groups = [
   {
@@ -17,6 +17,7 @@ const groups = [
   {
     label: "Developers",
     items: [
+      { to: "/docs", label: "Docs", icon: IconBook },
       { to: "/api-keys", label: "API keys", icon: IconKey },
       { to: "/signing-keys", label: "Signing keys", icon: IconSign },
       { to: "/webhooks", label: "Webhooks", icon: IconHook },
