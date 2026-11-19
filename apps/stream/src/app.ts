@@ -137,7 +137,8 @@ async function dashManifest(c: Context, r: Resolved) {
   if (!asset.hasDash) throw new PlaybackError(404, "DASH is only produced for DRM assets; use .m3u8");
   const st = pathToken(r, claims);
   const mpd = await cachedText(keys.assetDashManifest(asset.id));
-  return c.body(rewriteMpd(mpd, `/${r.playbackId}/${st}/dash/`), 200, {
+  // The MPD references the CMAF segments shared with HLS, relative to hls/ (see drmPackagerArgs).
+  return c.body(rewriteMpd(mpd, `/${r.playbackId}/${st}/hls/`), 200, {
     "Content-Type": "application/dash+xml",
     "Cache-Control": manifestCache(r),
   });

@@ -168,19 +168,29 @@ async function writeKeyInfo(t: TranscodeInput) {
   return file;
 }
 
-async function packageDrm(t: TranscodeInput, mezz: string) {
-  if (!t.drm) throw new Error("drm protection requires a content key");
-  const files = await fsp.readdir(mezz);
+/**
+ * Shaka Packager command line for a DRM asset. HLS and DASH share one set of CMAF segments in
+ * `outDir` (uploaded as hls/). The MPD is written into `outDir` too, so packager emits segment
+ * paths relative to it ("720p/init.mp4"); it writes absolute local paths for segments outside the
+ * MPD's directory. The caller moves the MPD to dash/ and the stream service serves it with a
+ * BaseURL pointing at hls/.
+ */
+export function drmPackagerArgs(
+  outDir: string,
+  mezz: string,
+  files: string[],
+  drm: { keyId: string; key: string; iv: string },
+): string[] {
   const args: string[] = [];
   for (const f of files.filter((x) => x.endsWith(".mp4") && x !== "audio.mp4")) {
     const name = f.replace(/\.mp4$/, "");
     args.push(
-      `in=${path.join(mezz, f)},stream=video,init_segment=${t.outDir}/${name}/init.mp4,segment_template=${t.outDir}/${name}/seg_$Number%05d$.m4s,playlist_name=${name}/index.m3u8,iframe_playlist_name=${name}/iframe.m3u8`,
+      `in=${path.join(mezz, f)},stream=video,init_segment=${outDir}/${name}/init.mp4,segment_template=${outDir}/${name}/seg_$Number%05d$.m4s,playlist_name=${name}/index.m3u8,iframe_playlist_name=${name}/iframe.m3u8`,
     );
   }
   if (files.includes("audio.mp4")) {
     args.push(
-      `in=${path.join(mezz, "audio.mp4")},stream=audio,init_segment=${t.outDir}/audio/init.mp4,segment_template=${t.outDir}/audio/seg_$Number%05d$.m4s,playlist_name=audio/index.m3u8,hls_group_id=audio,hls_name=Default`,
+      `in=${path.join(mezz, "audio.mp4")},stream=audio,init_segment=${outDir}/audio/init.mp4,segment_template=${outDir}/audio/seg_$Number%05d$.m4s,playlist_name=audio/index.m3u8,hls_group_id=audio,hls_name=Default`,
     );
   }
   args.push(
@@ -188,9 +198,9 @@ async function packageDrm(t: TranscodeInput, mezz: string) {
     String(SEGMENT_SECONDS),
     "--enable_raw_key_encryption",
     "--keys",
-    `label=:key_id=${t.drm.keyId}:key=${t.drm.key}`,
+    `label=:key_id=${drm.keyId}:key=${drm.key}`,
     "--iv",
-    t.drm.iv,
+    drm.iv,
     "--protection_scheme",
     "cbcs",
     "--clear_lead",
@@ -198,14 +208,24 @@ async function packageDrm(t: TranscodeInput, mezz: string) {
     "--protection_systems",
     "Widevine,PlayReady,FairPlay,CommonSystem",
     "--hls_key_uri",
-    `skd://${t.drm.keyId}`,
+    `skd://${drm.keyId}`,
     "--hls_master_playlist_output",
-    `${t.outDir}/master.m3u8`,
+    `${outDir}/master.m3u8`,
     "--mpd_output",
-    `${t.outDir}/../dash/manifest.mpd`,
+    `${outDir}/manifest.mpd`,
+    // segment_template output otherwise produces a dynamic (live) MPD; these are VOD assets.
+    "--generate_static_live_mpd",
   );
-  await fsp.mkdir(path.join(t.outDir, "..", "dash"), { recursive: true });
+  return args;
+}
+
+async function packageDrm(t: TranscodeInput, mezz: string) {
+  if (!t.drm) throw new Error("drm protection requires a content key");
+  const args = drmPackagerArgs(t.outDir, mezz, await fsp.readdir(mezz), t.drm);
   await run(env().PACKAGER_PATH, args, { timeoutMs: 6 * 3600_000 });
+  const dashDir = path.join(t.outDir, "..", "dash");
+  await fsp.mkdir(dashDir, { recursive: true });
+  await fsp.rename(path.join(t.outDir, "manifest.mpd"), path.join(dashDir, "manifest.mpd"));
 }
 
 /** Poster frame (1280 wide max). */

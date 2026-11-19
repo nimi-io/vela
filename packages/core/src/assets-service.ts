@@ -74,6 +74,23 @@ export class ApiError extends Error {
   }
 }
 
+export const DRM_MP4_MESSAGE = "mp4_support is not available for DRM assets: downloads would be unencrypted copies";
+
+/** True when these settings produce a DRM-protected asset (as createAsset decides). */
+export function isDrmSettings(s: Omit<NewAssetSettings, "input">): boolean {
+  return s.protection === "drm" || normalizePolicies(s).includes("drm");
+}
+
+/**
+ * Static MP4 renditions are never produced for DRM assets (they would be clear copies), so reject
+ * the combination up front instead of storing an mp4_support that can never be fulfilled.
+ */
+export function assertMp4SupportAllowed(s: Omit<NewAssetSettings, "input">) {
+  if (isDrmSettings(s) && s.mp4_support && s.mp4_support !== "none") {
+    throw new ApiError(400, "invalid_parameters", DRM_MP4_MESSAGE);
+  }
+}
+
 /**
  * Creates an asset row (+ playback IDs and declared text tracks) and queues processing.
  * `source` says where the media comes from: an uploaded object, a URL, or a live recording.
@@ -105,6 +122,8 @@ export async function createAsset(
   const policies = normalizePolicies(settings);
   let protection = settings.protection ?? "none";
   if (policies.includes("drm")) protection = "drm";
+  // Settings stored before an upload/recording completes may predate this check: drop MP4s then.
+  const mp4Support = protection === "drm" ? "none" : (settings.mp4_support ?? "none");
 
   const id = randomId(24);
   const [asset] = await db
@@ -114,7 +133,7 @@ export async function createAsset(
       environmentId,
       status: "preparing",
       input: inputs,
-      mp4Support: settings.mp4_support ?? "none",
+      mp4Support,
       normalizeAudio: settings.normalize_audio ?? false,
       videoQuality: settings.video_quality ?? "plus",
       maxResolutionTier: settings.max_resolution_tier ?? "1080p",

@@ -16,6 +16,7 @@ import {
   playbackIdJson,
   simulcastJson,
   newAssetSettingsSchema,
+  assertMp4SupportAllowed,
   playbackPolicy,
   randomId,
   randomSecret,
@@ -89,6 +90,7 @@ export const liveRoutes = new Hono<AppEnv>()
         simulcast_targets: z.array(simulcastInput).max(10).optional(),
       }),
     );
+    if (input.new_asset_settings) assertMp4SupportAllowed(input.new_asset_settings);
     const db = getDb();
     const envId = c.get("environmentId");
     const id = randomId(24);
@@ -135,6 +137,7 @@ export const liveRoutes = new Hono<AppEnv>()
         new_asset_settings: newAssetSettingsSchema.omit({ input: true }).optional(),
       }),
     );
+    if (input.new_asset_settings) assertMp4SupportAllowed(input.new_asset_settings);
     const [u] = await getDb()
       .update(liveStreams)
       .set({

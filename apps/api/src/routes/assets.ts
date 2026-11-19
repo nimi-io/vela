@@ -16,6 +16,8 @@ import {
 } from "@vela/db";
 import {
   createAsset,
+  assertMp4SupportAllowed,
+  DRM_MP4_MESSAGE,
   newAssetSettingsSchema,
   playbackPolicy,
   assetJson,
@@ -91,6 +93,7 @@ export const assetRoutes = new Hono<AppEnv>()
 
   .post("/", async (c) => {
     const input = await body(c, newAssetSettingsSchema);
+    assertMp4SupportAllowed(input);
     const { asset, playbackIds: pids, tracks: trks } = await createAsset(c.get("environmentId"), input);
     return ok(c, assetJson(asset, pids, trks), 201);
   })
@@ -174,6 +177,7 @@ export const assetRoutes = new Hono<AppEnv>()
   .put("/:id/mp4-support", async (c) => {
     const a = await loadAsset(c.get("environmentId"), c.req.param("id"));
     const input = await body(c, z.object({ mp4_support: z.enum(["none", "capped-1080p", "audio-only", "standard"]) }));
+    if (a.protection === "drm" && input.mp4_support !== "none") throw new ApiError(400, "invalid_parameters", DRM_MP4_MESSAGE);
     const [u] = await getDb()
       .update(assets)
       .set({ mp4Support: input.mp4_support, staticRenditions: [] })
@@ -294,6 +298,7 @@ export const assetRoutes = new Hono<AppEnv>()
     );
     if (input.end_time <= input.start_time) throw new ApiError(400, "invalid_parameters", "end_time must be after start_time");
     const { start_time, end_time, ...rest } = input;
+    assertMp4SupportAllowed(rest);
     const policies = rest.playback_policies ?? rest.playback_policy ?? ["public"];
     const { asset, playbackIds: pids, tracks: trks } = await createAsset(a.environmentId, {
       ...rest,
