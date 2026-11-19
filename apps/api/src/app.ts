@@ -5,7 +5,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import fs from "node:fs";
 import path from "node:path";
 import { getDb, playbackIds, eq, and, sql } from "@vela/db";
-import { env, redis, randomId, createLogger, playbackIdJson, mintPreviewToken } from "@vela/core";
+import { env, redis, randomId, createLogger, playbackIdJson, mintPreviewToken, checkHealth } from "@vela/core";
 import { ApiError, notFound, ok } from "./lib/http.js";
 import { requireEnvironment, sessionOnly, rateLimit } from "./middleware/auth.js";
 import { authRoutes } from "./routes/auth.js";
@@ -58,13 +58,9 @@ export function createApp() {
   });
 
   app.get("/health", async (c) => {
-    try {
-      await getDb().execute(sql`select 1`);
-      await redis().ping();
-      return c.json({ status: "ok" });
-    } catch (err) {
-      return c.json({ status: "degraded", error: String(err) }, 503);
-    }
+    const h = await checkHealth({ database: () => getDb().execute(sql`select 1`), redis: () => redis().ping() });
+    if (h.ok) return c.json({ status: "ok" });
+    return c.json({ status: "degraded", error: Object.entries(h.failures).map(([k, v]) => `${k}: ${v}`).join("; "), checks: h.failures }, 503);
   });
 
   app.route("/auth", authRoutes);
