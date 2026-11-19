@@ -17,6 +17,7 @@ import { WebhooksPage, WebhookPage } from "./pages/Webhooks";
 import { DrmPage } from "./pages/Drm";
 import { UsagePage } from "./pages/Usage";
 import { SettingsPage } from "./pages/Settings";
+import { DocsPage } from "./pages/Docs";
 
 const qc = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1, staleTime: 5_000 } },
@@ -47,6 +48,8 @@ function App() {
         <Route path="signing-keys" element={<SigningKeysPage />} />
         <Route path="webhooks" element={<WebhooksPage />} />
         <Route path="webhooks/:id" element={<WebhookPage />} />
+        <Route path="docs" element={<DocsPage />} />
+        <Route path="docs/:section" element={<DocsPage />} />
         <Route path="drm" element={<DrmPage />} />
         <Route path="usage" element={<UsagePage />} />
         <Route path="settings" element={<SettingsPage />} />
