@@ -7,7 +7,9 @@
  *
  * Signs up a throwaway user, uploads a video, waits for encoding, then checks HLS playback,
  * signed playback, AES-128, thumbnails, storyboards, clips, MP4 downloads, webhooks and analytics.
- * --webhook-host sets the host the API should call back on (default localhost).
+ * --webhook-host sets the host the API should call back on (default localhost). The same local
+ * server also serves the test video at /source.mp4 for the import-from-URL check, so containers
+ * must be able to reach it there (e.g. --webhook-host host.docker.internal).
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -68,13 +70,22 @@ async function waitFor(fn, label, timeoutMs = 240_000, interval = 2000) {
   throw new Error(`Timed out waiting for ${label}`);
 }
 
-// Webhook receiver
+// Webhook receiver. Each run listens on its own path so retried deliveries from earlier runs
+// (signed with an older endpoint's secret) aren't mistaken for this run's events.
+const RUN = crypto.randomBytes(6).toString("hex");
+const HOOK_PATH = `/hook/${RUN}`;
 const hooks = [];
 let hookSecret = "";
 const server = http.createServer((req, res) => {
+  if (req.method === "GET" && req.url === "/source.mp4") {
+    res.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": fs.statSync(VIDEO).size });
+    fs.createReadStream(VIDEO).pipe(res);
+    return;
+  }
   let body = "";
   req.on("data", (d) => (body += d));
   req.on("end", () => {
+    if (req.url !== HOOK_PATH) return res.writeHead(410).end("gone"); // stale endpoint from an earlier run
     const sig = String(req.headers["vela-signature"] ?? "");
     const { t, v1 } = Object.fromEntries(sig.split(",").map((p) => p.split("=")));
     const expected = crypto.createHmac("sha256", hookSecret).update(`${t}.${body}`).digest("hex");
@@ -95,7 +106,7 @@ try {
   const viaKey = await fetch(`${API}/v1/assets`, { headers: { Authorization: basic } });
   ok("API key auth", viaKey.ok);
 
-  const hook = await call("POST", "/v1/webhooks", { url: `http://${HOOK_HOST}:${HOOK_PORT}/hook`, events: ["*"] });
+  const hook = await call("POST", "/v1/webhooks", { url: `http://${HOOK_HOST}:${HOOK_PORT}${HOOK_PATH}`, events: ["*"] });
   hookSecret = hook.secret;
 
   // Direct upload
@@ -159,6 +170,9 @@ try {
     return r.status === 302 ? r : null;
   }, "mp4 redirect", 20_000, 1000).catch(() => null);
   ok("mp4 download redirect", !!mp4);
+  const dl = mp4 ? await fetch(mp4.headers.get("location")) : null;
+  const dlBytes = dl?.ok ? (await dl.arrayBuffer()).byteLength : 0;
+  ok("mp4 download from storage", !!dl?.ok && dlBytes > 10_000 && dl.headers.get("content-type") === "video/mp4", `HTTP ${dl?.status}, ${dlBytes} bytes`);
 
   // Clip
   const clip = await call("POST", `/v1/assets/${asset.id}/clips`, { start_time: 1, end_time: 4 });
@@ -170,9 +184,10 @@ try {
   ok("clip", Math.abs(clipReady.duration - 3) < 0.6, `${clipReady.duration?.toFixed(2)}s`);
 
   // AES-128
-  // Import from URL (the MP4 we just made) with AES-128 encryption.
-  const mp4Url = mp4?.headers.get("location");
-  const aes = await call("POST", "/v1/assets", { input: mp4Url, playback_policies: ["public"], protection: "aes-128" });
+  // Import from URL with AES-128 encryption. The URL must be reachable from the worker container:
+  // presigned storage URLs use S3_PUBLIC_ENDPOINT (e.g. localhost:3900), which is only valid
+  // outside Docker, so the test serves the video itself.
+  const aes = await call("POST", "/v1/assets", { input: `http://${HOOK_HOST}:${HOOK_PORT}/source.mp4`, playback_policies: ["public"], protection: "aes-128" });
   const aesReady = await waitFor(async () => {
     const a = await call("GET", `/v1/assets/${aes.id}`);
     if (a.status === "errored") throw new Error(`aes asset errored: ${JSON.stringify(a.errors)}`);
@@ -211,8 +226,11 @@ try {
   ok("webhook signatures valid", hooks.length > 0 && hooks.every((h) => h._valid), `${hooks.length} events`);
 
   // Delete
+  const clipPid = clipReady.playback_ids[0].id;
+  ok("clip plays before delete", (await fetch(`${STREAM}/${clipPid}.m3u8`)).ok);
   await call("DELETE", `/v1/assets/${clip.id}`);
-  ok("delete asset", (await fetch(`${STREAM}/${clipReady.playback_ids[0].id}.m3u8`)).status === 404 || true);
+  const gone = await waitFor(async () => (await fetch(`${STREAM}/${clipPid}.m3u8`)).status === 404, "deleted playback 404", 20_000, 1000).catch(() => false);
+  ok("delete asset → playback 404", gone);
 } catch (err) {
   console.error("✘", err.message);
   failures++;
