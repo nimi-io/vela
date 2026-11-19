@@ -174,11 +174,18 @@ export const assetRoutes = new Hono<AppEnv>()
   .put("/:id/mp4-support", async (c) => {
     const a = await loadAsset(c.get("environmentId"), c.req.param("id"));
     const input = await body(c, z.object({ mp4_support: z.enum(["none", "capped-1080p", "audio-only", "standard"]) }));
-    const [u] = await getDb()
+    const db = getDb();
+    const [u] = await db
       .update(assets)
       .set({ mp4Support: input.mp4_support, staticRenditions: [] })
       .where(eq(assets.id, a.id))
       .returning();
+    // The stream service caches a ready asset for ~15 s. Without this, after enabling MP4s
+    // it kept serving the old "mp4_support: none" row and answered 404 to the dashboard's
+    // Download link (renditions for short videos finish well inside that window); after
+    // disabling, it kept handing out downloads. Its short "settling" TTL takes over from here.
+    const pids = await db.select({ id: playbackIds.id }).from(playbackIds).where(eq(playbackIds.assetId, a.id));
+    await publishInvalidation({ playbackIds: pids.map((p) => p.id) });
     if (a.status === "ready") await enqueue("asset.static-renditions", { assetId: a.id });
     return ok(c, await full(u!));
   })
