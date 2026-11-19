@@ -9,7 +9,8 @@ import { deliverWebhook } from "./jobs/webhooks.js";
 import { liveSegment, liveFinalize, liveSimulcast } from "./jobs/live.js";
 import { sweepUploads, usageRollup, deleteAssetFiles } from "./jobs/maintenance.js";
 import { run } from "./lib/exec.js";
-import { getDb, assets, eq, and } from "@vela/db";
+import { isFinalFailure } from "./lib/jobs.js";
+import { getDb, assets, webhookDeliveries, eq, and } from "@vela/db";
 import { emitEvent, loadAssetJson } from "@vela/core";
 
 async function markAssetErrored(assetId: string, message: string) {
@@ -96,8 +97,16 @@ async function main() {
     w.on("failed", (job, err) => {
       log.warn({ queue: name, job: job?.name, id: job?.id, err: err.message }, "job failed");
       // Final failure (including after a crash/stall): never leave an asset stuck in "preparing".
-      if (job?.name === "asset.process" && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+      if (job?.name === "asset.process" && isFinalFailure(job, err)) {
         markAssetErrored(job.data.assetId, err.message).catch(() => {});
+      }
+      // Same for a delivery whose worker died mid-request too often: it must not stay "pending".
+      if (job?.name === "webhook.deliver" && isFinalFailure(job, err)) {
+        getDb()
+          .update(webhookDeliveries)
+          .set({ status: "failed" })
+          .where(and(eq(webhookDeliveries.id, job.data.deliveryId), eq(webhookDeliveries.status, "pending")))
+          .catch(() => {});
       }
     });
     w.on("completed", (job) => log.info({ queue: name, job: job.name, id: job.id }, "job completed"));
