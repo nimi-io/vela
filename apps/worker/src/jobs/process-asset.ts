@@ -263,16 +263,21 @@ export async function processAsset(job: Job<{ assetId: string }>) {
     const final = err instanceof InputError || job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
     log.error({ assetId, err: err.message, final }, "processing failed");
     if (final) {
-      await db
+      // Only a preparing asset: an attempt that lost its lock (its worker stalled) can fail after the
+      // attempt that now owns the job has marked the asset ready.
+      const errored = await db
         .update(assets)
         .set({
           status: "errored",
           progress: null,
           errors: { type: err instanceof InputError ? "invalid_input" : "processing_failed", messages: [String(err.message).slice(0, 2000)] },
         })
-        .where(eq(assets.id, assetId));
-      const json = await loadAssetJson(assetId);
-      await emitEvent(asset.environmentId, "video.asset.errored", json!, { type: "asset", id: assetId });
+        .where(and(eq(assets.id, assetId), eq(assets.status, "preparing")))
+        .returning({ id: assets.id });
+      if (errored.length) {
+        const json = await loadAssetJson(assetId);
+        await emitEvent(asset.environmentId, "video.asset.errored", json!, { type: "asset", id: assetId });
+      }
       if (err instanceof InputError) return { error: err.message };
     }
     throw err;
