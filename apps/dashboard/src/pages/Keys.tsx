@@ -38,7 +38,7 @@ export function ApiKeysPage() {
             Create a key to upload videos and manage live streams from your own backend.
           </Empty>
         ) : (
-          <table className="table">
+          <div className="table-wrap"><table className="table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -63,7 +63,7 @@ export function ApiKeysPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Panel>
 
@@ -185,7 +185,7 @@ export async function playbackToken(playbackId, aud = "v") {
           ) : !keys.data?.length ? (
             <Empty title="No signing keys">You need one before you can play signed or DRM videos outside the dashboard.</Empty>
           ) : (
-            <table className="table">
+            <div className="table-wrap"><table className="table">
               <thead>
                 <tr>
                   <th>Key ID</th>
@@ -206,7 +206,7 @@ export async function playbackToken(playbackId, aud = "v") {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </Panel>
         <Panel title="Sign a playback token (Node.js)">

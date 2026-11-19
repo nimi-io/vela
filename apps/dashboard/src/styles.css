@@ -72,6 +72,8 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 .page { max-width: 1200px; padding: 28px 36px 64px; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
 .page-head p { color: var(--ink-2); margin-top: 4px; max-width: 64ch; }
+.page-head > div { min-width: 0; }
+.page-head h1 { overflow-wrap: anywhere; }
 .mobile-bar { display: none; }
 
 @media (max-width: 860px) {
@@ -84,7 +86,7 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 
 /* ---------- Panels & layout ---------- */
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); }
-.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line-2); }
+.panel-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line-2); }
 .panel-head p { color: var(--ink-3); font-size: 13px; }
 .panel-body { padding: 18px; }
 .stack { display: flex; flex-direction: column; gap: 16px; }

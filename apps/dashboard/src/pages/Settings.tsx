@@ -54,7 +54,7 @@ export function SettingsPage() {
         </Panel>
 
         <Panel flush title="Environments" description="Each environment has its own videos, keys, webhooks and settings. Keep tests out of production.">
-          <table className="table">
+          <div className="table-wrap"><table className="table">
             <tbody>
               {org?.environments.map((e) => (
                 <tr key={e.id}>
@@ -73,7 +73,7 @@ export function SettingsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           {isAdmin && (
             <form
               className="row panel-body"
@@ -94,7 +94,7 @@ export function SettingsPage() {
         </Panel>
 
         <Panel flush title="Members">
-          <table className="table">
+          <div className="table-wrap"><table className="table">
             <tbody>
               {org?.members.map((m) => (
                 <tr key={m.id}>
@@ -124,7 +124,7 @@ export function SettingsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           {isAdmin && (
             <form
               className="row panel-body"

@@ -33,7 +33,7 @@ export function LiveListPage() {
             Each live stream has a permanent stream key, so you can reuse it for every broadcast.
           </Empty>
         ) : (
-          <table className="table">
+          <div className="table-wrap"><table className="table">
             <thead>
               <tr>
                 <th>Stream</th>
@@ -61,7 +61,7 @@ export function LiveListPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Panel>
       {creating && <CreateLive onClose={() => setCreating(false)} />}

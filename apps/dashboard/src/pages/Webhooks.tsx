@@ -33,7 +33,7 @@ export function WebhooksPage() {
               Add your server's URL to be told when videos finish processing.
             </Empty>
           ) : (
-            <table className="table">
+            <div className="table-wrap"><table className="table">
               <thead>
                 <tr>
                   <th>URL</th>
@@ -52,7 +52,7 @@ export function WebhooksPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </Panel>
         <EventLog />
@@ -71,7 +71,7 @@ function EventLog() {
       {!list.data?.data.length ? (
         <div className="panel-body muted">No events yet.</div>
       ) : (
-        <table className="table">
+        <div className="table-wrap"><table className="table">
           <tbody>
             {list.data.data.map((e) => (
               <tr key={e.id} className="click" onClick={() => setOpen(e)}>
@@ -81,7 +81,7 @@ function EventLog() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
       <div className="pager">
         <span>Page {page}</span>
@@ -216,7 +216,7 @@ export function WebhookPage() {
           {!deliveries.data?.data.length ? (
             <div className="panel-body muted">No deliveries yet. Send a test event to try it.</div>
           ) : (
-            <table className="table">
+            <div className="table-wrap"><table className="table">
               <thead>
                 <tr>
                   <th>Event</th>
@@ -240,7 +240,7 @@ export function WebhookPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </Panel>
         <div className="stack">
