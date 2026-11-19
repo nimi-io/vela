@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb, uploads, eq, and, desc, sql } from "@vela/db";
 import {
   newAssetSettingsSchema,
+  assertMp4SupportAllowed,
   uploadJson,
   randomId,
   storage,
@@ -48,6 +49,7 @@ export const uploadRoutes = new Hono<AppEnv>()
         test: z.boolean().optional(),
       }),
     );
+    assertMp4SupportAllowed(input.new_asset_settings);
     const id = randomId(24);
     const storageKey = keys.uploadSource(id);
     const [u] = await getDb()
