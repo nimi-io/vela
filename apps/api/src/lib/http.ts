@@ -38,3 +38,13 @@ export function notFound(what = "Resource"): never {
 export function ok<T>(c: Context, data: T, status: 200 | 201 = 200) {
   return c.json({ data }, status);
 }
+
+/**
+ * Drops undefined fields from a PATCH payload. Callers skip the UPDATE when nothing is left:
+ * an empty `.set({})` makes drizzle throw ("No values to set"), which surfaced as a 500.
+ */
+export function changes<T extends Record<string, unknown>>(input: T): Partial<T> {
+  return Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
+export const hasChanges = (patch: Record<string, unknown>) => Object.keys(patch).length > 0;

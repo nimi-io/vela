@@ -29,8 +29,11 @@ import {
   storage,
   keys,
   publishInvalidation,
+  assertPublicUrl,
+  BlockedUrlError,
 } from "@vela/core";
-import { body, ok, notFound, pagination, ApiError } from "../lib/http.js";
+import { body, ok, notFound, pagination, ApiError, changes, hasChanges } from "../lib/http.js";
+import { httpUrl } from "../lib/validators.js";
 import type { AppEnv } from "../types.js";
 
 async function loadAsset(envId: string, id: string) {
@@ -106,7 +109,9 @@ export const assetRoutes = new Hono<AppEnv>()
       c,
       z.object({ passthrough: z.string().max(255).nullable().optional(), title: z.string().max(512).nullable().optional() }),
     );
-    const [u] = await getDb().update(assets).set(input).where(eq(assets.id, a.id)).returning();
+    const patch = changes(input);
+    if (!hasChanges(patch)) return ok(c, await full(a));
+    const [u] = await getDb().update(assets).set(patch).where(eq(assets.id, a.id)).returning();
     const json = await full(u!);
     await emitEvent(a.environmentId, "video.asset.updated", json, { type: "asset", id: a.id });
     return ok(c, json);
@@ -200,7 +205,7 @@ export const assetRoutes = new Hono<AppEnv>()
     const input = await body(
       c,
       z.object({
-        url: z.string().url(),
+        url: httpUrl,
         type: z.literal("text").default("text"),
         text_type: z.literal("subtitles").optional(),
         language_code: z.string().max(16).default("en"),
@@ -208,6 +213,9 @@ export const assetRoutes = new Hono<AppEnv>()
         closed_captions: z.boolean().optional(),
       }),
     );
+    await assertPublicUrl(input.url).catch((err) => {
+      throw err instanceof BlockedUrlError ? new ApiError(400, "invalid_parameters", `url: ${err.message}`) : err;
+    });
     const [t] = await getDb()
       .insert(tracks)
       .values({

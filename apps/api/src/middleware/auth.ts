@@ -28,6 +28,18 @@ export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
 };
 
 /**
+ * Environment for a cookie-authenticated request. Writes must carry the X-Vela-Environment
+ * header: a custom header can't be sent cross-origin without a CORS preflight, which only
+ * DASHBOARD_URL/CORS_ORIGINS pass. Accepting ?environment= for writes would let any page that
+ * gets the browser to send the session cookie (a same-site sibling origin, or a browser without
+ * SameSite=Lax) forge a "simple" text/plain POST, e.g. registering a webhook. Reads may use it.
+ */
+export function sessionEnvironment(method: string, header: string | undefined, query: string | undefined) {
+  const safe = method === "GET" || method === "HEAD";
+  return header ?? (safe ? query : undefined);
+}
+
+/**
  * Authenticates /v1 requests. Two ways in:
  *  - HTTP Basic with an API access token (id:secret) → scoped to that key's environment
  *  - Dashboard session cookie + `X-Vela-Environment` header → any environment of the user's orgs
@@ -59,7 +71,7 @@ export const requireEnvironment: MiddlewareHandler<AppEnv> = async (c, next) => 
   } else {
     const user = await sessionUser(c);
     if (!user) throw new ApiError(401, "unauthorized", "Provide an access token or sign in");
-    const envId = c.req.header("x-vela-environment") ?? c.req.query("environment");
+    const envId = sessionEnvironment(c.req.method, c.req.header("x-vela-environment"), c.req.query("environment"));
     if (!envId) throw new ApiError(400, "missing_environment", "X-Vela-Environment header is required");
     const [row] = await db
       .select({ env: environments, m: memberships })
@@ -79,6 +91,15 @@ export const requireEnvironment: MiddlewareHandler<AppEnv> = async (c, next) => 
   }
   await next();
 };
+
+/**
+ * Read-only access tokens are for reporting/monitoring; they must not hand out credentials that
+ * allow writes elsewhere (a webhook signing secret lets the holder forge webhooks to your app).
+ */
+export function canSeeSecrets(c: Context) {
+  const auth = c.get("auth") as AppEnv["Variables"]["auth"] | undefined;
+  return !!auth && !(auth.kind === "key" && auth.permissions === "read");
+}
 
 /** Only dashboard sessions (not API keys) may manage credentials. */
 export const sessionOnly: MiddlewareHandler<AppEnv> = async (c, next) => {

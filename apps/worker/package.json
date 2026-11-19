@@ -8,7 +8,7 @@
     "start": "node dist/index.js",
     "build": "tsup",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@vela/core": "workspace:*",

@@ -26,7 +26,7 @@ import {
   kickLivePublisher,
   createLogger,
 } from "@vela/core";
-import { body, ok, notFound, pagination, ApiError } from "../lib/http.js";
+import { body, ok, notFound, pagination, ApiError, changes, hasChanges } from "../lib/http.js";
 import type { AppEnv } from "../types.js";
 
 async function loadStream(envId: string, id: string) {
@@ -169,18 +169,16 @@ export const liveRoutes = new Hono<AppEnv>()
       }),
     );
     if (input.new_asset_settings) assertMp4SupportAllowed(input.new_asset_settings);
-    const [u] = await getDb()
-      .update(liveStreams)
-      .set({
-        reconnectWindow: input.reconnect_window,
-        latencyMode: input.latency_mode,
-        recording: input.recording,
-        passthrough: input.passthrough,
-        title: input.title,
-        newAssetSettings: input.new_asset_settings,
-      })
-      .where(eq(liveStreams.id, l.id))
-      .returning();
+    const patch = changes({
+      reconnectWindow: input.reconnect_window,
+      latencyMode: input.latency_mode,
+      recording: input.recording,
+      passthrough: input.passthrough,
+      title: input.title,
+      newAssetSettings: input.new_asset_settings,
+    });
+    if (!hasChanges(patch)) return ok(c, await full(l));
+    const [u] = await getDb().update(liveStreams).set(patch).where(eq(liveStreams.id, l.id)).returning();
     return ok(c, await full(u!));
   })
 

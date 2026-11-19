@@ -10,6 +10,8 @@ import {
   verifyToken,
   pathToken,
   checkPathToken,
+  hasVideo,
+  requireVideo,
   PlaybackError,
   type Resolved,
   type Audience,
@@ -256,13 +258,13 @@ export function createApp() {
       let m;
       if ((m = file.match(/^thumbnail\.(jpg|png|webp)$/))) {
         await authorise(c, r, "t");
-        if (r.asset) requireAsset(r);
+        if (r.asset) requireVideo(requireAsset(r));
         const img = await thumbnail(r, m[1] as any, q(c));
         return c.body(bin(img.body), 200, { "Content-Type": img.type, "Cache-Control": `${r.policy === "public" ? "public" : "private"}, max-age=${img.cache}` });
       }
       if ((m = file.match(/^animated\.(gif|webp)$/))) {
         await authorise(c, r, "g");
-        requireAsset(r);
+        requireVideo(requireAsset(r));
         const img = await animated(r, m[1] as any, q(c));
         return c.body(bin(img.body), 200, { "Content-Type": img.type, "Cache-Control": `${r.policy === "public" ? "public" : "private"}, max-age=86400` });
       }
@@ -394,7 +396,7 @@ async function playbackInfo(r: Resolved, token?: string) {
     protection: a.protection,
     hls: `${base}/${r.playbackId}.m3u8${tq}`,
     dash: a.hasDash ? `${base}/${r.playbackId}.mpd${tq}` : null,
-    poster: `${base}/${r.playbackId}/thumbnail.jpg${tq}`,
+    poster: hasVideo(a) ? `${base}/${r.playbackId}/thumbnail.jpg${tq}` : null,
     storyboard: a.hasStoryboard ? `${base}/${r.playbackId}/storyboard.vtt${tq}` : null,
     chapters: a.ai?.chapters?.length ? `${base}/${r.playbackId}/chapters.vtt${tq}` : null,
     drm,

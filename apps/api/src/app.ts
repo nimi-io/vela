@@ -108,6 +108,14 @@ export function createApp() {
   });
   app.route("/v1", v1);
 
+  // API paths never fall through to the dashboard's HTML catch-all below: an unknown endpoint
+  // must be a JSON 404, not a 200 text/html page that clients would misread as success.
+  const routeNotFound = (c: any) => c.json({ error: { type: "not_found", messages: ["Route not found"] } }, 404);
+  for (const prefix of ["/v1", "/auth", "/internal"]) {
+    app.all(prefix, routeNotFound);
+    app.all(`${prefix}/*`, routeNotFound);
+  }
+
   // Optionally serve the built dashboard from the API (same origin → no CORS/cookie issues).
   const dist = process.env.DASHBOARD_DIST;
   if (dist && fs.existsSync(path.join(dist, "index.html"))) {

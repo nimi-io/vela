@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { env, storage, keys, contentTypeFor } from "@vela/core";
+import { env, storage, keys, contentTypeFor, masterSource } from "@vela/core";
 import { Semaphore } from "./cache.js";
 import type { Resolved } from "./playback.js";
 
@@ -36,11 +36,9 @@ async function frameSource(r: Resolved): Promise<{ url: string; offset: number; 
       live: true,
     };
   }
-  const a = r.asset!;
-  const clip = a.input.find((i) => i.url?.startsWith("vela://assets/"));
-  const sourceAsset = clip ? clip.url!.slice("vela://assets/".length) : a.id;
-  const url = await storage.presignGet(keys.assetSource(sourceAsset), 600, { public: false });
-  return { url, offset: clip?.start_time ?? 0, live: false };
+  const m = masterSource(r.asset!);
+  const url = await storage.presignGet(m.key, 600, { public: false });
+  return { url, offset: m.start, live: false };
 }
 
 const clampInt = (v: string | undefined, min: number, max: number) => {

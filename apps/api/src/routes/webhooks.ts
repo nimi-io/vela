@@ -11,7 +11,9 @@ import {
   sql,
 } from "@vela/db";
 import { randomId, randomSecret, webhookEndpointJson, enqueue, emitEvent, WEBHOOK_EVENT_TYPES } from "@vela/core";
-import { body, ok, notFound, pagination } from "../lib/http.js";
+import { body, ok, notFound, pagination, changes, hasChanges } from "../lib/http.js";
+import { httpUrl, webhookEventList } from "../lib/validators.js";
+import { canSeeSecrets } from "../middleware/auth.js";
 import type { AppEnv } from "../types.js";
 
 async function loadEndpoint(envId: string, id: string) {
@@ -23,7 +25,7 @@ async function loadEndpoint(envId: string, id: string) {
   return w;
 }
 
-const eventsSchema = z.array(z.string()).min(1).default(["*"]);
+const eventsSchema = webhookEventList.default(["*"]);
 
 export const webhookRoutes = new Hono<AppEnv>()
   .get("/event-types", (c) => ok(c, WEBHOOK_EVENT_TYPES))
@@ -33,24 +35,26 @@ export const webhookRoutes = new Hono<AppEnv>()
       .from(webhookEndpoints)
       .where(eq(webhookEndpoints.environmentId, c.get("environmentId")))
       .orderBy(desc(webhookEndpoints.createdAt));
-    return ok(c, rows.map((w) => webhookEndpointJson(w, true)));
+    return ok(c, rows.map((w) => webhookEndpointJson(w, canSeeSecrets(c))));
   })
   .post("/", async (c) => {
-    const input = await body(c, z.object({ url: z.string().url(), events: eventsSchema }));
+    const input = await body(c, z.object({ url: httpUrl, events: eventsSchema }));
     const [w] = await getDb()
       .insert(webhookEndpoints)
       .values({ id: randomId(24), environmentId: c.get("environmentId"), url: input.url, events: input.events, secret: randomSecret(24) })
       .returning();
     return ok(c, webhookEndpointJson(w!, true), 201);
   })
-  .get("/:id", async (c) => ok(c, webhookEndpointJson(await loadEndpoint(c.get("environmentId"), c.req.param("id")), true)))
+  .get("/:id", async (c) => ok(c, webhookEndpointJson(await loadEndpoint(c.get("environmentId"), c.req.param("id")), canSeeSecrets(c))))
   .patch("/:id", async (c) => {
     const w = await loadEndpoint(c.get("environmentId"), c.req.param("id"));
     const input = await body(
       c,
-      z.object({ url: z.string().url().optional(), events: z.array(z.string()).min(1).optional(), enabled: z.boolean().optional() }),
+      z.object({ url: httpUrl.optional(), events: webhookEventList.optional(), enabled: z.boolean().optional() }),
     );
-    const [u] = await getDb().update(webhookEndpoints).set(input).where(eq(webhookEndpoints.id, w.id)).returning();
+    const patch = changes(input);
+    if (!hasChanges(patch)) return ok(c, webhookEndpointJson(w, true));
+    const [u] = await getDb().update(webhookEndpoints).set(patch).where(eq(webhookEndpoints.id, w.id)).returning();
     return ok(c, webhookEndpointJson(u!, true));
   })
   .post("/:id/rotate-secret", async (c) => {
@@ -85,7 +89,8 @@ export const webhookRoutes = new Hono<AppEnv>()
   .get("/:id/deliveries", async (c) => {
     const w = await loadEndpoint(c.get("environmentId"), c.req.param("id"));
     const { limit, offset, page } = pagination(c);
-    const rows = await getDb()
+    const db = getDb();
+    const rows = await db
       .select({ d: webhookDeliveries, e: webhookEvents })
       .from(webhookDeliveries)
       .innerJoin(webhookEvents, eq(webhookEvents.id, webhookDeliveries.eventId))
@@ -93,6 +98,10 @@ export const webhookRoutes = new Hono<AppEnv>()
       .orderBy(desc(webhookDeliveries.createdAt))
       .limit(limit)
       .offset(offset);
+    const [{ total }] = (await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(webhookDeliveries)
+      .where(eq(webhookDeliveries.endpointId, w.id))) as [{ total: number }];
     return c.json({
       data: rows.map(({ d, e }) => ({
         id: d.id,
@@ -104,7 +113,7 @@ export const webhookRoutes = new Hono<AppEnv>()
         created_at: d.createdAt,
         event: { id: e.id, type: e.type, data: e.data, created_at: e.createdAt },
       })),
-      pagination: { page, limit },
+      pagination: { page, limit, total },
     });
   })
   .post("/deliveries/:did/redeliver", async (c) => {

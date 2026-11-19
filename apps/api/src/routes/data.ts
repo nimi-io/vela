@@ -111,6 +111,8 @@ export const dataRoutes = new Hono<AppEnv>()
   .get("/views", async (c) => {
     const { where } = scope(c);
     const { limit, offset, page } = pagination(c);
-    const rows = await getDb().select().from(views).where(where).orderBy(desc(views.startedAt)).limit(limit).offset(offset);
-    return c.json({ data: rows, pagination: { page, limit } });
+    const db = getDb();
+    const rows = await db.select().from(views).where(where).orderBy(desc(views.startedAt)).limit(limit).offset(offset);
+    const [{ total }] = (await db.select({ total: sql<number>`count(*)::int` }).from(views).where(where)) as [{ total: number }];
+    return c.json({ data: rows, pagination: { page, limit, total } });
   });

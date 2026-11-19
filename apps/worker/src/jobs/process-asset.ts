@@ -18,7 +18,8 @@ import {
 } from "@vela/core";
 import { probe, aspectRatio } from "../lib/media.js";
 import { transcode, poster, storyboard } from "../lib/transcode.js";
-import { downloadUrl, downloadKey } from "../lib/source.js";
+import { downloadUrl, downloadKey, cutClipMaster } from "../lib/source.js";
+import { cleanUpIfDeleted } from "../lib/deleted.js";
 
 const log = createLogger("worker:process");
 
@@ -53,14 +54,29 @@ export async function processAsset(job: Job<{ assetId: string }>) {
     if (asset.sourceKey) {
       await downloadKey(asset.sourceKey, source);
       if (asset.sourceKey !== keys.assetSource(assetId)) {
+        // Move a direct upload's object under the asset right away. Doing it only on success
+        // left uploads/<id>/source behind forever for every upload that failed to process.
         await storage.copy(asset.sourceKey, keys.assetSource(assetId));
+        await db.update(assets).set({ sourceKey: keys.assetSource(assetId) }).where(eq(assets.id, assetId));
+        await storage.deleteKey(asset.sourceKey).catch(() => {});
       }
     } else if (primary?.url?.startsWith("vela://assets/")) {
       const srcId = primary.url.slice("vela://assets/".length);
-      await downloadKey(keys.assetSource(srcId), source).catch(() => {
+      const parent = path.join(work, "parent");
+      await downloadKey(keys.assetSource(srcId), parent).catch(() => {
         throw new InputError("Source asset's master file is not available");
       });
-      trim = { start: primary.start_time, end: primary.end_time };
+      const p = await probe(parent).catch(() => {
+        throw new InputError("Source asset's master file could not be read");
+      });
+      const clipEnd = Math.min(primary.end_time ?? p.duration, p.duration);
+      const clipStart = Math.min(primary.start_time ?? 0, clipEnd);
+      if (clipEnd - clipStart <= 0.1) throw new InputError("Clip range is empty");
+      // The clip's own master, so it doesn't depend on the parent (which may be deleted).
+      await cutClipMaster(parent, source, clipStart, primary.end_time !== undefined ? clipEnd : undefined);
+      await fsp.rm(parent, { force: true });
+      await storage.putFile(keys.assetSource(assetId), source, "video/mp4");
+      await db.update(assets).set({ sourceKey: keys.assetSource(assetId) }).where(eq(assets.id, assetId));
     } else if (primary?.url) {
       await downloadUrl(primary.url, source).catch((e) => {
         throw new InputError(e.message);
@@ -155,6 +171,12 @@ export async function processAsset(job: Job<{ assetId: string }>) {
     await storage.putDir(out, keys.assetHlsPrefix(assetId));
     if (dash) await storage.putDir(path.join(work, "out", "dash"), keys.assetDashPrefix(assetId));
 
+    // Deleted while we were working? Our uploads may have landed after the delete job ran.
+    if (await cleanUpIfDeleted(assetId)) {
+      log.info({ assetId }, "asset was deleted during processing; removed its files");
+      return { skipped: true, deleted: true };
+    }
+
     /* 8. Mark ready. */
     const renditions: Rendition[] = ladder.map((r) => ({ name: r.name, width: r.width, height: r.height, bitrate: r.videoBitrate, codec: "h264" }));
     const top = ladder[0];
@@ -208,12 +230,6 @@ export async function processAsset(job: Job<{ assetId: string }>) {
       });
     }
 
-    // If the source came from a direct upload, the master copy now lives under the asset.
-    if (asset.uploadId && asset.sourceKey && asset.sourceKey !== keys.assetSource(assetId)) {
-      await storage.deleteKey(asset.sourceKey).catch(() => {});
-      await db.update(assets).set({ sourceKey: keys.assetSource(assetId) }).where(eq(assets.id, assetId));
-    }
-
     await recordUsage(asset.environmentId, duration, asset.isLive);
 
     /* 9. Follow-up work. */
@@ -242,6 +258,7 @@ export async function processAsset(job: Job<{ assetId: string }>) {
     log.info({ assetId, duration, renditions: renditions.length }, "asset ready");
     return { duration, renditions: renditions.length };
   } catch (err: any) {
+    if (await cleanUpIfDeleted(assetId).catch(() => false)) return { skipped: true, deleted: true };
     const final = err instanceof InputError || job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
     log.error({ assetId, err: err.message, final }, "processing failed");
     if (final) {

@@ -4,7 +4,7 @@ Base URL: `API_PUBLIC_URL` (default `http://localhost:4000`). All management end
 
 **Authentication:** HTTP Basic with an access token (`-u TOKEN_ID:TOKEN_SECRET`). Each token belongs to one environment. Read-only tokens can only use `GET`. The dashboard uses a session cookie plus an `X-Vela-Environment` header instead.
 
-**Responses:** objects are wrapped as `{ "data": ... }`. Lists add `"pagination": { "page", "limit", "total" }` and accept `?page=&limit=` (max 100). Errors look like `{ "error": { "type": "invalid_parameters", "messages": ["..."] } }`.
+**Responses:** objects are wrapped as `{ "data": ... }`. Lists of assets, uploads, live streams, events, webhook deliveries and `/v1/data/views` add `"pagination": { "page", "limit", "total" }` and accept `?page=&limit=` (default 25, max 100). The small configuration lists (`/v1/signing-keys`, `/v1/webhooks`, `/v1/api-keys`) return every item and have no `pagination`. Errors look like `{ "error": { "type": "invalid_parameters", "messages": ["..."] } }`.
 
 ## Assets
 
@@ -59,8 +59,9 @@ Create body:
 
 - `playback_policies: ["drm"]` encrypts with CENC for Widevine, PlayReady and FairPlay.
 - `protection: "aes-128"` encrypts HLS segments with AES-128.
-- Clip another asset with `{ "url": "vela://assets/ASSET_ID", "start_time": 10, "end_time": 25 }`.
+- Clip another asset with `{ "url": "vela://assets/ASSET_ID", "start_time": 10, "end_time": 25 }`. A clip gets its own master file (just that range), so it keeps working if the original is deleted.
 - `max_resolution_tier: "2160p"` keeps 4K renditions.
+- Input, subtitle and overlay URLs must be `http(s)://`. Hosts that are or resolve to private, loopback, link-local or other non-public addresses (including after redirects) are refused with `400 invalid_parameters` (or the asset errors if the check fails at download time), unless the server sets `ALLOW_PRIVATE_INPUT_URLS=true`.
 
 Asset `status` is `preparing`, then `ready` or `errored`. `progress` shows `{ state, progress }` while it's processing.
 

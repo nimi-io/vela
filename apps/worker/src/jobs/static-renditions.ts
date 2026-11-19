@@ -4,6 +4,8 @@ import type { Job } from "bullmq";
 import { getDb, assets, eq, type StaticRendition } from "@vela/db";
 import { env, storage, keys, emitEvent, loadAssetJson, randomId, createLogger } from "@vela/core";
 import { ffmpeg, probe } from "../lib/media.js";
+import { assetMaster } from "../lib/source.js";
+import { cleanUpIfDeleted } from "../lib/deleted.js";
 
 const log = createLogger("worker:static");
 
@@ -45,15 +47,7 @@ export async function staticRenditions(job: Job<{ assetId: string }>) {
   await fsp.mkdir(work, { recursive: true });
   try {
     const src = path.join(work, "source");
-    const clip = asset.input.find((i) => i.url?.startsWith("vela://assets/"));
-    let trimArgs: string[] = [];
-    if (clip) {
-      // Clips don't store their own master; trim the parent's source.
-      await storage.downloadToFile(keys.assetSource(clip.url!.slice("vela://assets/".length)), src);
-      trimArgs = [...(clip.start_time ? ["-ss", String(clip.start_time)] : []), ...(clip.end_time ? ["-to", String(clip.end_time)] : [])];
-    } else {
-      await storage.downloadToFile(keys.assetSource(asset.id), src);
-    }
+    const trimArgs = await assetMaster(asset, src);
     const results: StaticRendition[] = [];
     for (const s of specs) {
       const out = path.join(work, `${s.name}.${s.ext}`);
@@ -98,6 +92,7 @@ export async function staticRenditions(job: Job<{ assetId: string }>) {
       });
       await fsp.rm(out, { force: true });
     }
+    if (await cleanUpIfDeleted(asset.id)) return { skipped: true, deleted: true };
     await db.update(assets).set({ staticRenditions: results }).where(eq(assets.id, asset.id));
     await emitEvent(asset.environmentId, "video.asset.static_renditions.ready", (await loadAssetJson(asset.id))!, { type: "asset", id: asset.id });
     return { files: results.length };

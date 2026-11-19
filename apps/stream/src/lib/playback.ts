@@ -22,6 +22,17 @@ export type Resolved = {
   live?: typeof liveStreams.$inferSelect;
 };
 
+/** Audio-only assets (e.g. an MP3) have no picture: no thumbnails, GIFs or storyboard. */
+export function hasVideo(asset: { maxWidth: number | null; maxHeight: number | null }) {
+  return !!asset.maxWidth && !!asset.maxHeight;
+}
+
+/** 404 instead of letting ffmpeg fail on a stream-less frame grab (which surfaced as a 500). */
+export function requireVideo<T extends { maxWidth: number | null; maxHeight: number | null }>(asset: T): T {
+  if (!hasVideo(asset)) throw new PlaybackError(404, "This asset has no video track (audio-only)");
+  return asset;
+}
+
 const resolveCache = new TtlCache<Resolved | null>(10_000);
 
 /** Playback ID → asset or live stream (cached for a few seconds). */
