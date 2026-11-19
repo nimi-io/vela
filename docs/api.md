@@ -4,7 +4,7 @@ Base URL: `API_PUBLIC_URL` (default `http://localhost:4000`). All management end
 
 **Authentication:** HTTP Basic with an access token (`-u TOKEN_ID:TOKEN_SECRET`). Each token belongs to one environment. Read-only tokens can only use `GET`. The dashboard uses a session cookie plus an `X-Vela-Environment` header instead.
 
-**Responses:** objects are wrapped as `{ "data": ... }`. Lists add `"pagination": { "page", "limit", "total" }` and accept `?page=&limit=` (max 100). Errors look like `{ "error": { "type": "invalid_parameters", "messages": ["..."] } }`.
+**Responses:** objects are wrapped as `{ "data": ... }`. Lists of assets, uploads, live streams, events, webhook deliveries and `/v1/data/views` add `"pagination": { "page", "limit", "total" }` and accept `?page=&limit=` (default 25, max 100). The small configuration lists (`/v1/signing-keys`, `/v1/webhooks`, `/v1/api-keys`) return every item and have no `pagination`. Errors look like `{ "error": { "type": "invalid_parameters", "messages": ["..."] } }`.
 
 ## Assets
 

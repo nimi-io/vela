@@ -87,7 +87,8 @@ export const webhookRoutes = new Hono<AppEnv>()
   .get("/:id/deliveries", async (c) => {
     const w = await loadEndpoint(c.get("environmentId"), c.req.param("id"));
     const { limit, offset, page } = pagination(c);
-    const rows = await getDb()
+    const db = getDb();
+    const rows = await db
       .select({ d: webhookDeliveries, e: webhookEvents })
       .from(webhookDeliveries)
       .innerJoin(webhookEvents, eq(webhookEvents.id, webhookDeliveries.eventId))
@@ -95,6 +96,10 @@ export const webhookRoutes = new Hono<AppEnv>()
       .orderBy(desc(webhookDeliveries.createdAt))
       .limit(limit)
       .offset(offset);
+    const [{ total }] = (await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(webhookDeliveries)
+      .where(eq(webhookDeliveries.endpointId, w.id))) as [{ total: number }];
     return c.json({
       data: rows.map(({ d, e }) => ({
         id: d.id,
@@ -106,7 +111,7 @@ export const webhookRoutes = new Hono<AppEnv>()
         created_at: d.createdAt,
         event: { id: e.id, type: e.type, data: e.data, created_at: e.createdAt },
       })),
-      pagination: { page, limit },
+      pagination: { page, limit, total },
     });
   })
   .post("/deliveries/:did/redeliver", async (c) => {
