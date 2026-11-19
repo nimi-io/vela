@@ -11,7 +11,7 @@ import {
   sql,
 } from "@vela/db";
 import { randomId, randomSecret, webhookEndpointJson, enqueue, emitEvent, WEBHOOK_EVENT_TYPES } from "@vela/core";
-import { body, ok, notFound, pagination } from "../lib/http.js";
+import { body, ok, notFound, pagination, changes, hasChanges } from "../lib/http.js";
 import type { AppEnv } from "../types.js";
 
 async function loadEndpoint(envId: string, id: string) {
@@ -50,7 +50,9 @@ export const webhookRoutes = new Hono<AppEnv>()
       c,
       z.object({ url: z.string().url().optional(), events: z.array(z.string()).min(1).optional(), enabled: z.boolean().optional() }),
     );
-    const [u] = await getDb().update(webhookEndpoints).set(input).where(eq(webhookEndpoints.id, w.id)).returning();
+    const patch = changes(input);
+    if (!hasChanges(patch)) return ok(c, webhookEndpointJson(w, true));
+    const [u] = await getDb().update(webhookEndpoints).set(patch).where(eq(webhookEndpoints.id, w.id)).returning();
     return ok(c, webhookEndpointJson(u!, true));
   })
   .post("/:id/rotate-secret", async (c) => {

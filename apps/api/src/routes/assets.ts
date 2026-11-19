@@ -28,7 +28,7 @@ import {
   keys,
   publishInvalidation,
 } from "@vela/core";
-import { body, ok, notFound, pagination, ApiError } from "../lib/http.js";
+import { body, ok, notFound, pagination, ApiError, changes, hasChanges } from "../lib/http.js";
 import type { AppEnv } from "../types.js";
 
 async function loadAsset(envId: string, id: string) {
@@ -103,7 +103,9 @@ export const assetRoutes = new Hono<AppEnv>()
       c,
       z.object({ passthrough: z.string().max(255).nullable().optional(), title: z.string().max(512).nullable().optional() }),
     );
-    const [u] = await getDb().update(assets).set(input).where(eq(assets.id, a.id)).returning();
+    const patch = changes(input);
+    if (!hasChanges(patch)) return ok(c, await full(a));
+    const [u] = await getDb().update(assets).set(patch).where(eq(assets.id, a.id)).returning();
     const json = await full(u!);
     await emitEvent(a.environmentId, "video.asset.updated", json, { type: "asset", id: a.id });
     return ok(c, json);
