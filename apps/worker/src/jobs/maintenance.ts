@@ -1,6 +1,7 @@
 import type { Job } from "bullmq";
 import { getDb, uploads, assets, views, usageDaily, eq, and, lt, gte, isNull, sql } from "@vela/db";
-import { storage, keys, finalizeUpload, emitEvent, uploadJson, createLogger } from "@vela/core";
+import { storage, finalizeUpload, emitEvent, uploadJson, createLogger } from "@vela/core";
+import { deleteAssetObjects } from "../lib/deleted.js";
 
 const log = createLogger("worker:maintenance");
 
@@ -64,6 +65,8 @@ export async function usageRollup(_job: Job) {
 
 /** Removes every stored object for a deleted asset. */
 export async function deleteAssetFiles(job: Job<{ assetId: string }>) {
-  const n = await storage.deletePrefix(keys.assetPrefix(job.data.assetId));
+  // Includes uploads/<upload id>/source when the asset was deleted before processing moved it.
+  const [a] = await getDb().select({ uploadId: assets.uploadId }).from(assets).where(eq(assets.id, job.data.assetId));
+  const n = await deleteAssetObjects(job.data.assetId, a?.uploadId ?? null);
   return { deleted: n };
 }

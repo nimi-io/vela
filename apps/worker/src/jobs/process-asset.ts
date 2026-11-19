@@ -53,7 +53,11 @@ export async function processAsset(job: Job<{ assetId: string }>) {
     if (asset.sourceKey) {
       await downloadKey(asset.sourceKey, source);
       if (asset.sourceKey !== keys.assetSource(assetId)) {
+        // Move a direct upload's object under the asset right away. Doing it only on success
+        // left uploads/<id>/source behind forever for every upload that failed to process.
         await storage.copy(asset.sourceKey, keys.assetSource(assetId));
+        await db.update(assets).set({ sourceKey: keys.assetSource(assetId) }).where(eq(assets.id, assetId));
+        await storage.deleteKey(asset.sourceKey).catch(() => {});
       }
     } else if (primary?.url?.startsWith("vela://assets/")) {
       const srcId = primary.url.slice("vela://assets/".length);
@@ -206,12 +210,6 @@ export async function processAsset(job: Job<{ assetId: string }>) {
         name: "Default",
         meta: { max_channels: Math.min(info.audio.channels, 2), duration },
       });
-    }
-
-    // If the source came from a direct upload, the master copy now lives under the asset.
-    if (asset.uploadId && asset.sourceKey && asset.sourceKey !== keys.assetSource(assetId)) {
-      await storage.deleteKey(asset.sourceKey).catch(() => {});
-      await db.update(assets).set({ sourceKey: keys.assetSource(assetId) }).where(eq(assets.id, assetId));
     }
 
     await recordUsage(asset.environmentId, duration, asset.isLive);
