@@ -43,6 +43,8 @@ const schema = z.object({
   // Live
   MEDIAMTX_HLS_URL: z.string().default("http://localhost:8888"),
   MEDIAMTX_RTMP_URL: z.string().default("rtmp://localhost:1935"),
+  // MediaMTX Control API: used to disconnect encoders on disable / complete / stream key reset.
+  MEDIAMTX_API_URL: z.string().default("http://localhost:9997"),
   LIVE_RTMP_PUBLIC_URL: z.string().default("rtmp://localhost:1935/live"),
   LIVE_RTMPS_PUBLIC_URL: z.string().optional(),
   LIVE_SRT_PUBLIC_URL: z.string().default("srt://localhost:8890"),

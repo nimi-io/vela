@@ -81,9 +81,9 @@ Asset `status` is `preparing`, then `ready` or `errored`. `progress` shows `{ st
 | GET | `/v1/live-streams`, `/v1/live-streams/:id` | Includes `stream_key` and `ingest` URLs |
 | PATCH | `/v1/live-streams/:id` | |
 | DELETE | `/v1/live-streams/:id` | |
-| POST | `/v1/live-streams/:id/reset-stream-key` | |
-| PUT | `/v1/live-streams/:id/disable`, `/enable` | |
-| PUT | `/v1/live-streams/:id/complete` | End the session now instead of waiting for the reconnect window |
+| POST | `/v1/live-streams/:id/reset-stream-key` | The old key stops working immediately: a connected encoder is disconnected and can reconnect with the new key within the reconnect window (same session) |
+| PUT | `/v1/live-streams/:id/disable`, `/enable` | Disable refuses new connections, disconnects a connected encoder and ends the session (the recording is finalized). Enable allows publishing again |
+| PUT | `/v1/live-streams/:id/complete` | End the session now instead of waiting for the reconnect window. A connected encoder is disconnected; if it reconnects, a new session (and recording) starts |
 | POST/DELETE | `/v1/live-streams/:id/playback-ids[/:pid]` | |
 | POST/DELETE | `/v1/live-streams/:id/simulcast-targets[/:tid]` | `{ url: "rtmp://…", stream_key }` |
 
