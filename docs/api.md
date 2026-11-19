@@ -6,6 +6,8 @@ Base URL: `API_PUBLIC_URL` (default `http://localhost:4000`). All management end
 
 **Responses:** objects are wrapped as `{ "data": ... }`. Lists of assets, uploads, live streams, events, webhook deliveries and `/v1/data/views` add `"pagination": { "page", "limit", "total" }` and accept `?page=&limit=` (default 25, max 100). The small configuration lists (`/v1/signing-keys`, `/v1/webhooks`, `/v1/api-keys`) return every item and have no `pagination`. Errors look like `{ "error": { "type": "invalid_parameters", "messages": ["..."] } }`.
 
+**Rate limits:** each access token (or dashboard user) may make `RATE_LIMIT_PER_MINUTE` (default 1200) `/v1` requests per fixed one-minute window, counted in Redis and shared by all API replicas. Every response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (Unix seconds when the window ends). Over the limit you get `429` with `{ "error": { "type": "rate_limited" } }` and `Retry-After` (seconds until the reset).
+
 ## Assets
 
 | Method | Path | Notes |

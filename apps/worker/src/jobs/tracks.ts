@@ -2,18 +2,18 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import type { Job } from "bullmq";
 import { getDb, assets, tracks, eq } from "@vela/db";
-import { env, storage, keys, emitEvent, trackJson, randomId, createLogger, invalidateAssetPlayback } from "@vela/core";
+import { storage, keys, emitEvent, trackJson, createLogger, invalidateAssetPlayback } from "@vela/core";
 import { ffmpeg, probe } from "../lib/media.js";
 import { downloadUrl, assetMaster } from "../lib/source.js";
 import { transcribe, transcriptionEnabled, llmJson } from "../lib/ai.js";
 import { buildVtt, parseVtt, cuesToTranscript, type Cue } from "../lib/vtt.js";
 import { cleanUpIfDeleted } from "../lib/deleted.js";
+import { makeJobWorkDir } from "../lib/workdir.js";
 
 const log = createLogger("worker:tracks");
 
-async function withWork<T>(name: string, fn: (dir: string) => Promise<T>): Promise<T> {
-  const dir = path.join(env().WORK_DIR, `${name}-${randomId(6)}`);
-  await fsp.mkdir(dir, { recursive: true });
+async function withWork<T>(job: Job, fn: (dir: string) => Promise<T>): Promise<T> {
+  const dir = await makeJobWorkDir(job);
   try {
     return await fn(dir);
   } finally {
@@ -61,7 +61,7 @@ export async function ingestTrack(job: Job<{ assetId: string; trackId: string; u
   const ctx = await loadTrack(job.data.trackId);
   if (!ctx) return { skipped: true };
   try {
-    return await withWork("track", async (dir) => {
+    return await withWork(job, async (dir) => {
       const input = path.join(dir, "input");
       await downloadUrl(job.data.url, input);
       if (ctx.track.type !== "text") throw new Error("Only text tracks can be added from a URL");
@@ -123,7 +123,7 @@ export async function generateSubtitles(job: Job<{ assetId: string; trackId: str
     return { skipped: true };
   }
   try {
-    return await withWork("asr", async (dir) => {
+    return await withWork(job, async (dir) => {
       const cues = await transcribeAsset(ctx.asset, ctx.track.languageCode ?? undefined, dir);
       const key = keys.trackVtt(ctx.asset.id, ctx.track.id);
       await storage.putBuffer(key, buildVtt(cues), "text/vtt", "public, max-age=300");
@@ -178,7 +178,7 @@ export async function aiInsights(job: Job<{ assetId: string }>) {
   if (ready) {
     cues = parseVtt(await storage.getText(ready.storageKey!));
   } else if (transcriptionEnabled()) {
-    cues = await withWork("insights", (dir) => transcribeAsset(asset, undefined, dir));
+    cues = await withWork(job, (dir) => transcribeAsset(asset, undefined, dir));
   } else {
     await db.update(assets).set({ ai: { summary: undefined, tags: [], chapters: [] } }).where(eq(assets.id, asset.id));
     return { skipped: true, reason: "no transcript" };

@@ -81,7 +81,11 @@ export const uploadRoutes = new Hono<AppEnv>()
     const u = await loadUpload(c.get("environmentId"), c.req.param("id"));
     if (u.status === "waiting") {
       const asset = await finalizeUpload(u.id);
-      if (!asset) throw new ApiError(409, "upload_incomplete", "No file has been uploaded to this upload URL yet");
+      // null also means a concurrent /complete (or the sweeper) claimed it first: only report
+      // "no file" when the upload is genuinely still waiting.
+      if (!asset && (await loadUpload(u.environmentId, u.id)).status === "waiting") {
+        throw new ApiError(409, "upload_incomplete", "No file has been uploaded to this upload URL yet");
+      }
     }
     return ok(c, uploadJson(await loadUpload(u.environmentId, u.id)));
   })

@@ -2,10 +2,11 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import type { Job } from "bullmq";
 import { getDb, assets, eq, type StaticRendition } from "@vela/db";
-import { env, storage, keys, emitEvent, loadAssetJson, randomId, createLogger, invalidateAssetPlayback } from "@vela/core";
+import { env, storage, keys, emitEvent, loadAssetJson, createLogger, invalidateAssetPlayback } from "@vela/core";
 import { ffmpeg, probe } from "../lib/media.js";
 import { assetMaster } from "../lib/source.js";
 import { cleanUpIfDeleted } from "../lib/deleted.js";
+import { makeJobWorkDir } from "../lib/workdir.js";
 
 const log = createLogger("worker:static");
 
@@ -43,8 +44,7 @@ export async function staticRenditions(job: Job<{ assetId: string }>) {
   const pending: StaticRendition[] = specs.map((s) => ({ name: `${s.name}.${s.ext}`, ext: s.ext, status: "preparing" }));
   await db.update(assets).set({ staticRenditions: pending }).where(eq(assets.id, asset.id));
 
-  const work = path.join(env().WORK_DIR, `static-${asset.id}-${randomId(6)}`);
-  await fsp.mkdir(work, { recursive: true });
+  const work = await makeJobWorkDir(job);
   try {
     const src = path.join(work, "source");
     const trimArgs = await assetMaster(asset, src);

@@ -109,19 +109,35 @@ export const sessionOnly: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
-/** Simple fixed-window rate limit per credential. */
-export function rateLimit(perMinute: number): MiddlewareHandler<AppEnv> {
+type RateLimitMulti = { incr(key: string): RateLimitMulti; expire(key: string, seconds: number): RateLimitMulti; exec(): Promise<[Error | null, unknown][] | null> };
+type RateLimitStore = { multi(): RateLimitMulti };
+
+/**
+ * Fixed one-minute window per credential, counted in Redis so every API replica shares it.
+ * Responses carry X-RateLimit-Limit/-Remaining/-Reset; a 429 also carries Retry-After (seconds
+ * until the window resets), so clients know when to come back instead of guessing.
+ */
+export function rateLimit(perMinute: number, deps: { store?: () => RateLimitStore; now?: () => number } = {}): MiddlewareHandler<AppEnv> {
+  const store = deps.store ?? (redis as unknown as () => RateLimitStore);
+  const now = deps.now ?? Date.now;
   return async (c, next) => {
     const auth = c.get("auth");
     const id = auth?.kind === "key" ? auth.keyId : (c.get("userId") ?? c.req.header("x-forwarded-for") ?? "anon");
-    const bucket = Math.floor(Date.now() / 60000);
+    const t = now();
+    const bucket = Math.floor(t / 60000);
     const k = `rl:${id}:${bucket}`;
-    const r = redis();
-    const n = await r.incr(k);
-    if (n === 1) await r.expire(k, 70);
+    // One round trip, and the counter can't be left without a TTL if the process dies in between.
+    const res = await store().multi().incr(k).expire(k, 70).exec();
+    if (!res || res[0]?.[0]) throw res?.[0]?.[0] ?? new Error("rate limit counter failed");
+    const n = Number(res[0][1]);
+    const resetSec = Math.ceil(((bucket + 1) * 60000) / 1000);
     c.header("X-RateLimit-Limit", String(perMinute));
     c.header("X-RateLimit-Remaining", String(Math.max(0, perMinute - n)));
-    if (n > perMinute) throw new ApiError(429, "rate_limited", "Too many requests");
+    c.header("X-RateLimit-Reset", String(resetSec));
+    if (n > perMinute) {
+      c.header("Retry-After", String(Math.max(1, resetSec - Math.floor(t / 1000))));
+      throw new ApiError(429, "rate_limited", "Too many requests");
+    }
     await next();
   };
 }

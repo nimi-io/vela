@@ -11,13 +11,13 @@ import {
   liveStreamJson,
   simulcastJson,
   loadAssetJson,
-  randomId,
   createLogger,
   getQueue,
   QUEUES,
 } from "@vela/core";
 import { ffmpeg } from "../lib/media.js";
 import { run } from "../lib/exec.js";
+import { makeJobWorkDir } from "../lib/workdir.js";
 
 const log = createLogger("worker:live");
 
@@ -128,8 +128,7 @@ export async function liveFinalize(job: Job<{ liveStreamId: string; sessionId: s
     return { recorded: false };
   }
 
-  const work = path.join(env().WORK_DIR, `live-${assetId}-${randomId(6)}`);
-  await fsp.mkdir(work, { recursive: true });
+  const work = await makeJobWorkDir(job);
   try {
     const list: string[] = [];
     for (const [i, s] of segments.entries()) {

@@ -9,7 +9,9 @@ import { deliverWebhook } from "./jobs/webhooks.js";
 import { liveSegment, liveFinalize, liveSimulcast } from "./jobs/live.js";
 import { sweepUploads, usageRollup, deleteAssetFiles } from "./jobs/maintenance.js";
 import { run } from "./lib/exec.js";
-import { getDb, assets, eq, and } from "@vela/db";
+import { isFinalFailure } from "./lib/jobs.js";
+import { removeJobWorkDir, runWithJobWorkDir } from "./lib/workdir.js";
+import { getDb, assets, webhookDeliveries, eq, and } from "@vela/db";
 import { emitEvent, loadAssetJson } from "@vela/core";
 
 async function markAssetErrored(assetId: string, message: string) {
@@ -50,7 +52,7 @@ const handlers: Record<string, (job: Job<any>) => Promise<unknown>> = {
 const processor: Processor = async (job) => {
   const handler = handlers[job.name];
   if (!handler) throw new Error(`No handler for job ${job.name}`);
-  return handler(job);
+  return runWithJobWorkDir(job, () => handler(job));
 };
 
 async function checkTools() {
@@ -95,9 +97,20 @@ async function main() {
     });
     w.on("failed", (job, err) => {
       log.warn({ queue: name, job: job?.name, id: job?.id, err: err.message }, "job failed");
+      // A job failed for stalling (its worker died) never reaches the processor again: remove
+      // what the dead attempt left on the work volume.
+      if (job && isFinalFailure(job, err)) removeJobWorkDir(job).catch(() => {});
       // Final failure (including after a crash/stall): never leave an asset stuck in "preparing".
-      if (job?.name === "asset.process" && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+      if (job?.name === "asset.process" && isFinalFailure(job, err)) {
         markAssetErrored(job.data.assetId, err.message).catch(() => {});
+      }
+      // Same for a delivery whose worker died mid-request too often: it must not stay "pending".
+      if (job?.name === "webhook.deliver" && isFinalFailure(job, err)) {
+        getDb()
+          .update(webhookDeliveries)
+          .set({ status: "failed" })
+          .where(and(eq(webhookDeliveries.id, job.data.deliveryId), eq(webhookDeliveries.status, "pending")))
+          .catch(() => {});
       }
     });
     w.on("completed", (job) => log.info({ queue: name, job: job.name, id: job.id }, "job completed"));
