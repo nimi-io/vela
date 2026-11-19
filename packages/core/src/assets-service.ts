@@ -7,6 +7,7 @@ import {
   eq,
   and,
   isNull,
+  sql,
   type AssetInputSettings,
 } from "@vela/db";
 import { z } from "zod";
@@ -99,7 +100,7 @@ export function assertMp4SupportAllowed(s: Omit<NewAssetSettings, "input">) {
 export async function createAsset(
   environmentId: string,
   settings: NewAssetSettings,
-  source: { uploadId?: string; sourceKey?: string; liveStreamId?: string; isLive?: boolean } = {},
+  source: { uploadId?: string; sourceKey?: string; liveStreamId?: string; isLive?: boolean; assetId?: string } = {},
   opts: { process?: boolean } = { process: true },
 ) {
   const db = getDb();
@@ -144,7 +145,7 @@ export async function createAsset(
   // Settings stored before an upload/recording completes may predate this check: drop MP4s then.
   const mp4Support = protection === "drm" ? "none" : (settings.mp4_support ?? "none");
 
-  const id = randomId(24);
+  const id = source.assetId ?? randomId(24);
   const [asset] = await db
     .insert(assets)
     .values({
@@ -228,21 +229,36 @@ export async function finalizeUpload(uploadId: string) {
   const head = await storage.head(u.storageKey);
   if (!head) return null;
 
-  // Claim the upload atomically so a concurrent sweeper can't create a second asset.
+  // Claim the upload atomically so a concurrent /complete or the sweeper can't create a second
+  // asset. The asset ID is assigned in the same statement, so a caller that loses the race still
+  // sees which asset the upload became (see uploadRoutes' /complete).
+  const assetId = randomId(24);
   const claimed = await db
     .update(uploads)
-    .set({ status: "asset_created" })
+    .set({ status: "asset_created", assetId })
     .where(and(eq(uploads.id, uploadId), eq(uploads.status, "waiting")))
     .returning();
   if (!claimed.length) return null;
 
   const settings = newAssetSettingsSchema.parse(u.newAssetSettings ?? {});
-  const { asset } = await createAsset(
-    u.environmentId,
-    { ...settings, test: settings.test ?? u.test, input: undefined },
-    { uploadId: u.id, sourceKey: keys.uploadSource(u.id) },
-  );
-  await db.update(uploads).set({ assetId: asset.id }).where(eq(uploads.id, uploadId));
+  let asset;
+  try {
+    ({ asset } = await createAsset(
+      u.environmentId,
+      { ...settings, test: settings.test ?? u.test, input: undefined },
+      { uploadId: u.id, sourceKey: keys.uploadSource(u.id), assetId },
+    ));
+  } catch (err) {
+    // Release the claim when the asset row was never written (e.g. the database dropped the
+    // connection). Otherwise the upload points at a missing asset forever: the sweeper only
+    // retries "waiting" uploads.
+    await db
+      .update(uploads)
+      .set({ status: "waiting", assetId: null })
+      .where(and(eq(uploads.id, uploadId), eq(uploads.assetId, assetId), sql`not exists (select 1 from ${assets} where ${assets.id} = ${assetId})`))
+      .catch(() => {});
+    throw err;
+  }
   await emitEvent(
     u.environmentId,
     "video.upload.asset_created",
