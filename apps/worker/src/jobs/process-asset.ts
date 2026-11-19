@@ -18,7 +18,7 @@ import {
 } from "@vela/core";
 import { probe, aspectRatio } from "../lib/media.js";
 import { transcode, poster, storyboard } from "../lib/transcode.js";
-import { downloadUrl, downloadKey } from "../lib/source.js";
+import { downloadUrl, downloadKey, cutClipMaster } from "../lib/source.js";
 import { cleanUpIfDeleted } from "../lib/deleted.js";
 
 const log = createLogger("worker:process");
@@ -62,10 +62,21 @@ export async function processAsset(job: Job<{ assetId: string }>) {
       }
     } else if (primary?.url?.startsWith("vela://assets/")) {
       const srcId = primary.url.slice("vela://assets/".length);
-      await downloadKey(keys.assetSource(srcId), source).catch(() => {
+      const parent = path.join(work, "parent");
+      await downloadKey(keys.assetSource(srcId), parent).catch(() => {
         throw new InputError("Source asset's master file is not available");
       });
-      trim = { start: primary.start_time, end: primary.end_time };
+      const p = await probe(parent).catch(() => {
+        throw new InputError("Source asset's master file could not be read");
+      });
+      const clipEnd = Math.min(primary.end_time ?? p.duration, p.duration);
+      const clipStart = Math.min(primary.start_time ?? 0, clipEnd);
+      if (clipEnd - clipStart <= 0.1) throw new InputError("Clip range is empty");
+      // The clip's own master, so it doesn't depend on the parent (which may be deleted).
+      await cutClipMaster(parent, source, clipStart, primary.end_time !== undefined ? clipEnd : undefined);
+      await fsp.rm(parent, { force: true });
+      await storage.putFile(keys.assetSource(assetId), source, "video/mp4");
+      await db.update(assets).set({ sourceKey: keys.assetSource(assetId) }).where(eq(assets.id, assetId));
     } else if (primary?.url) {
       await downloadUrl(primary.url, source).catch((e) => {
         throw new InputError(e.message);

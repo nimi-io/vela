@@ -224,6 +224,22 @@ export const storage = {
 };
 
 /* Storage layout, kept in one place so every service agrees. */
+/**
+ * Where an asset's original media lives and which range of it belongs to the asset.
+ * Clips used to read their parent's master with an offset, so deleting the parent broke the
+ * clip's thumbnails, MP4s, captions and master download. Clips now get their own master
+ * (just the clip range) at processing time; old clips without one fall back to the parent.
+ */
+export function masterSource(asset: {
+  id: string;
+  sourceKey?: string | null;
+  input: { url?: string; start_time?: number; end_time?: number }[];
+}): { key: string; start: number; end?: number } {
+  const clip = asset.input.find((i) => i.url?.startsWith("vela://assets/"));
+  if (!clip || asset.sourceKey === `assets/${asset.id}/source`) return { key: `assets/${asset.id}/source`, start: 0 };
+  return { key: `assets/${clip.url!.slice("vela://assets/".length)}/source`, start: clip.start_time ?? 0, end: clip.end_time };
+}
+
 export const keys = {
   uploadSource: (uploadId: string) => `uploads/${uploadId}/source`,
   assetSource: (assetId: string) => `assets/${assetId}/source`,

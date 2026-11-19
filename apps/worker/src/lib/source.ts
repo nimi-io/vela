@@ -4,7 +4,8 @@ import path from "node:path";
 import http from "node:http";
 import https from "node:https";
 import { pipeline } from "node:stream/promises";
-import { storage, assertSafeUrlSyntax, guardedLookup, privateUrlsAllowed } from "@vela/core";
+import { env, storage, masterSource, assertSafeUrlSyntax, guardedLookup, privateUrlsAllowed } from "@vela/core";
+import { ffmpeg } from "./media.js";
 
 const MAX_DOWNLOAD_BYTES = Number(process.env.MAX_INPUT_BYTES ?? 50 * 1024 ** 3);
 
@@ -54,16 +55,45 @@ export async function downloadUrl(url: string, dest: string, redirects = 5): Pro
  * parent's master plus the ffmpeg input args that select the clip's range.
  */
 export async function assetMaster(
-  asset: { id: string; input: { url?: string; start_time?: number; end_time?: number }[] },
+  asset: { id: string; sourceKey?: string | null; input: { url?: string; start_time?: number; end_time?: number }[] },
   dest: string,
 ): Promise<string[]> {
-  const clip = asset.input.find((i) => i.url?.startsWith("vela://assets/"));
-  if (clip) {
-    await storage.downloadToFile(`assets/${clip.url!.slice("vela://assets/".length)}/source`, dest);
-    return [...(clip.start_time ? ["-ss", String(clip.start_time)] : []), ...(clip.end_time ? ["-to", String(clip.end_time)] : [])];
-  }
-  await storage.downloadToFile(`assets/${asset.id}/source`, dest);
-  return [];
+  const m = masterSource(asset);
+  await storage.downloadToFile(m.key, dest);
+  return [...(m.start ? ["-ss", String(m.start)] : []), ...(m.end ? ["-to", String(m.end)] : [])];
+}
+
+/**
+ * Cuts a clip's own master from its parent's: only the clip range, re-encoded near-losslessly
+ * so it starts exactly at start_time (a stream copy would start at the previous keyframe).
+ */
+export async function cutClipMaster(parent: string, out: string, start: number, end: number | undefined) {
+  await ffmpeg([
+    "-ss",
+    String(start),
+    ...(end !== undefined ? ["-to", String(end)] : []),
+    "-i",
+    parent,
+    "-map",
+    "0:v:0?",
+    "-map",
+    "0:a:0?",
+    "-c:v",
+    "libx264",
+    "-preset",
+    env().X264_PRESET,
+    "-crf",
+    "16",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "256k",
+    "-movflags",
+    "+faststart",
+    "-f",
+    "mp4",
+    out,
+  ]);
 }
 
 export async function downloadKey(key: string, dest: string) {

@@ -59,7 +59,7 @@ Create body:
 
 - `playback_policies: ["drm"]` encrypts with CENC for Widevine, PlayReady and FairPlay.
 - `protection: "aes-128"` encrypts HLS segments with AES-128.
-- Clip another asset with `{ "url": "vela://assets/ASSET_ID", "start_time": 10, "end_time": 25 }`.
+- Clip another asset with `{ "url": "vela://assets/ASSET_ID", "start_time": 10, "end_time": 25 }`. A clip gets its own master file (just that range), so it keeps working if the original is deleted.
 - `max_resolution_tier: "2160p"` keeps 4K renditions.
 - Input, subtitle and overlay URLs must be `http(s)://`. Hosts that are or resolve to private, loopback, link-local or other non-public addresses (including after redirects) are refused with `400 invalid_parameters` (or the asset errors if the check fails at download time), unless the server sets `ALLOW_PRIVATE_INPUT_URLS=true`.
 
